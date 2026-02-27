@@ -286,11 +286,17 @@ ${input.scriptText.slice(0, 80000)}
       scenes: z.array(z.string()),
       characters: z.array(z.string()),
       styleZh: z.string().optional(),
+      episodeScript: z.string().optional(), // 当集原剧本文本
     }))
     .mutation(async ({ input }) => {
-      const { episodeTitle, episodeNumber, episodeSynopsis, durationMinutes, scenes, characters, styleZh } = input;
+      const { episodeTitle, episodeNumber, episodeSynopsis, durationMinutes, scenes, characters, styleZh, episodeScript } = input;
       // Cap at 60 shots per request to avoid token overflow (~60 shots ≈ 30k tokens output)
       const targetShots = Math.min(Math.round(durationMinutes * 25), 60);
+
+      // 如果有原剧本文本，截取到合理长度（避免超出输入 token 限制）
+      const scriptSection = episodeScript
+        ? `\n\n【原剧本内容（必须严格遵循）】\n${episodeScript.slice(0, 40000)}`
+        : "";
 
       const prompt = `你是专业的影视导演和分镜师。请根据以下剧本信息，为第${episodeNumber}集生成分镜表。
 
@@ -300,16 +306,18 @@ ${input.scriptText.slice(0, 80000)}
 单集时长：${durationMinutes}分钟
 主要场景：${scenes.join('、')}
 出场人物：${characters.join('、')}
-整体风格：${styleZh || '3D科幻机甲国漫风格'}
+整体风格：${styleZh || '3D科幻机甲国漫风格'}${scriptSection}
 
 【分镜生成规则】
 1. 总镜头数：${targetShots}个
 2. 每个镜头时长：2-5科，高燃场景用短镜头（2-3科），转场和平静场景用长镜头（4-5科）
 3. 镜头类型分配：定场镜头(10%) 逻辑镜头(20%) Action镜头(35%) Reaction镜头(25%) 旁跳镜头(10%)
 4. 情绪节奏：开头平静铺垫，中段逐渐升温，高潮点爆发，结尾余韵收尾
-5. 画面描述：必须具体描述画面内容（人物动作、表情、场景氛围），不能只写"场景名+模板文字"
-6. 每5个镜头左右安排一个旁白（VO）
-7. 每个动作镜头应有具体的音效描述（SFX）
+5. 【最重要】旁白（VO）必须直接摘取原剧本中的旁白文字，一字不改、不删减、不增加
+6. 【最重要】台词对白必须严格按照原剧本原文，不得改写、浓缩、添加任何内容
+7. 画面描述（description）可以在原剧本场景基础上补充镜头语言细节（如光效、构图、运动方式），但不得虞构剧情事件
+8. 不得删除、合并、改写原剧本中的任何场景、人物、事件
+9. 每个动作镜头应有具体的音效描述（SFX）
 
 请严格输出以下JSON格式，不要有任何额外说明：
 {
@@ -320,7 +328,7 @@ ${input.scriptText.slice(0, 80000)}
       "size": "大远景|远景|全景|中景|中近景|近景|特写|大特写",
       "movement": "固定|推（Dolly In）|拉（Dolly Out）|跟（Follow）|左移（Truck Left）|右移（Truck Right）|升（Crane Up）|降（Crane Down）|环绕（Orbit）|手持（Handheld）|航拍（Aerial）",
       "description": "具体的画面内容描述，包含人物动作和场景氛围",
-      "vo": "旁白内容，无则留空",
+      "vo": "直接摘取原剧本旁白原文，无则留空",
       "sfx": "音效描述，无则留空",
       "duration": 3,
       "emotion": "情绪关键词",

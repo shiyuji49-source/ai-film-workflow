@@ -205,9 +205,49 @@ function ShotRow({ shot, onUpdate, onRemove }: {
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
+// 从完整剧本中提取指定集的文本片段
+function extractEpisodeScript(fullScript: string, episodeNumber: number, episodes: Array<{ number: number; title: string }>): string {
+  if (!fullScript.trim()) return "";
+  const lines = fullScript.split("\n");
+  // 匹配集数标志： EP-01 / 第一集 / Episode 1 等
+  const epRegex = /^(EP[\s\-_]?\d+|第\s*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\d]+\s*集|Episode\s*\d+|第\s*\d+\s*集)/i;
+  
+  let startLine = -1;
+  let endLine = lines.length;
+  
+  // 找到当集开始行
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (epRegex.test(line)) {
+      // 提取集数
+      const numMatch = line.match(/\d+/) || line.match(/[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]/);
+      if (numMatch) {
+        const chineseNums: Record<string, number> = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10 };
+        const raw = numMatch[0];
+        const num = chineseNums[raw] ?? parseInt(raw, 10);
+        if (num === episodeNumber) startLine = i;
+        else if (num === episodeNumber + 1 && startLine !== -1) { endLine = i; break; }
+      }
+    }
+  }
+  
+  if (startLine === -1) {
+    // 找不到集数标志，尝试按标题匹配
+    const ep = episodes.find(e => e.number === episodeNumber);
+    if (ep?.title) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(ep.title)) { startLine = i; break; }
+      }
+    }
+  }
+  
+  if (startLine === -1) return fullScript.slice(0, 20000); // fallback: 返回全文前部分
+  return lines.slice(startLine, endLine).join("\n");
+}
+
 export default function Phase3() {
   const { scriptAnalysis, characters, shots, addShot, updateShot, removeShot,
-    addShotsFromAI, markPhaseComplete, setActivePhase, projectInfo } = useProject();
+    addShotsFromAI, markPhaseComplete, setActivePhase, projectInfo, scriptText } = useProject();
   const [activeEpTab, setActiveEpTab] = useState(
     scriptAnalysis.episodes.length > 0 ? scriptAnalysis.episodes[0].id : ""
   );
@@ -224,6 +264,8 @@ export default function Phase3() {
     if (!activeEpTab || !activeEp) { toast.error("请先选择集数"); return; }
     setGeneratingEp(activeEpTab);
     try {
+      // 提取当集原剧本文本，确保 AI 严格遵循原剧本内容
+      const episodeScript = extractEpisodeScript(scriptText, activeEp.number, scriptAnalysis.episodes);
       const result = await generateShotsMutation.mutateAsync({
         episodeTitle: activeEp.title,
         episodeNumber: activeEp.number,
@@ -232,6 +274,7 @@ export default function Phase3() {
         scenes: activeEp.scenes as string[],
         characters: characters.map(c => c.name),
         styleZh: projectInfo.styleZh || projectInfo.styleCategory || "3D科幻机甲国漫风格",
+        episodeScript: episodeScript || undefined,
       });
       addShotsFromAI(activeEpTab, result.shots);
       toast.success(`已为「${activeEp.title}」生成 ${result.shots.length} 个分镜`);
