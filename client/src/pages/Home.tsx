@@ -11,6 +11,7 @@ import Phase4 from "./phases/Phase4";
 import Phase5 from "./phases/Phase5";
 import Phase6 from "./phases/Phase6";
 import Dashboard from "./Dashboard";
+import Landing from "./Landing";
 import { useState, useEffect } from "react";
 import { Menu, Clapperboard } from "lucide-react";
 
@@ -28,7 +29,7 @@ const PHASE_MAP: Record<string, React.ReactNode> = {
 export default function Home() {
   const { activePhase } = useProject();
   const { activeProjectId } = useProjectManager();
-  const [view, setView] = useState<"dashboard" | "workflow">("dashboard");
+  const [view, setView] = useState<"landing" | "dashboard" | "workflow">("landing");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // When active project changes (e.g. after create), auto-switch to workflow
@@ -42,10 +43,13 @@ export default function Home() {
   useEffect(() => {
     const hash = window.location.hash;
     if (hash.startsWith("#share=")) {
-      // handled by ProjectManagerContext on mount
       setView("workflow");
     }
   }, []);
+
+  if (view === "landing") {
+    return <Landing onEnter={() => setView("dashboard")} />;
+  }
 
   if (view === "dashboard") {
     return <Dashboard onOpenProject={() => setView("workflow")} />;
