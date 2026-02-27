@@ -106,7 +106,7 @@ export default function Phase1() {
           ].map(({ key, label, placeholder }) => (
             <div key={key} className="space-y-1.5">
               <Label className="text-xs" style={{ color: "oklch(0.65 0.01 240)" }}>{label}</Label>
-              <Input value={projectInfo[key as keyof typeof projectInfo]} onChange={e => updateProjectInfo({ [key]: e.target.value })}
+              <Input value={String(projectInfo[key as keyof typeof projectInfo] ?? "")} onChange={e => updateProjectInfo({ [key]: e.target.value })}
                 placeholder={placeholder} className="text-sm h-9"
                 style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
             </div>

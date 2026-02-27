@@ -45,24 +45,6 @@ interface ProjectManagerContextType {
 const STORAGE_KEY = "liuguangji_projects_v1";
 const ACTIVE_KEY = "liuguangji_active_project_v1";
 
-function loadProjects(): ProjectSnapshot[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as ProjectSnapshot[];
-  } catch {
-    return [];
-  }
-}
-
-function saveProjects(projects: ProjectSnapshot[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-  } catch {
-    // quota exceeded — silently ignore
-  }
-}
-
 function nanoid() {
   return Math.random().toString(36).slice(2, 9);
 }
@@ -76,6 +58,68 @@ function defaultProjectInfo(): ProjectInfo {
 
 function defaultScriptAnalysis(): ScriptAnalysis {
   return { episodes: [], globalCharacters: [], isAnalyzed: false };
+}
+
+function migrateSnapshot(raw: Record<string, unknown>): ProjectSnapshot {
+  // 对旧版本数据做字段补全，防止新字段为 undefined
+  const defaultInfo = defaultProjectInfo();
+  const rawInfo = (raw.projectInfo as Record<string, unknown>) || {};
+  const projectInfo: ProjectInfo = {
+    title: (rawInfo.title as string) ?? defaultInfo.title,
+    type: (rawInfo.type as string) ?? defaultInfo.type,
+    episodes: (rawInfo.episodes as string) ?? defaultInfo.episodes,
+    platform: (rawInfo.platform as string) ?? defaultInfo.platform,
+    ratio: (rawInfo.ratio as string) ?? defaultInfo.ratio,
+    audience: (rawInfo.audience as string) ?? defaultInfo.audience,
+    selling: (rawInfo.selling as string) ?? defaultInfo.selling,
+    styleZh: (rawInfo.styleZh as string) ?? defaultInfo.styleZh,
+    styleEn: (rawInfo.styleEn as string) ?? defaultInfo.styleEn,
+  };
+  // 修复 Character 缺少 isMecha 字段
+  const characters = ((raw.characters as Record<string, unknown>[]) || []).map(c => ({
+    id: (c.id as string) || "",
+    name: (c.name as string) || "",
+    role: (c.role as string) || "",
+    appearance: (c.appearance as string) || "",
+    costume: (c.costume as string) || "",
+    marks: (c.marks as string) || "",
+    isMecha: typeof c.isMecha === "boolean" ? c.isMecha : false,
+    promptZh: (c.promptZh as string) || "",
+    promptEn: (c.promptEn as string) || "",
+  }));
+  return {
+    id: (raw.id as string) || "",
+    createdAt: (raw.createdAt as number) || Date.now(),
+    updatedAt: (raw.updatedAt as number) || Date.now(),
+    projectInfo,
+    scriptText: (raw.scriptText as string) || "",
+    scriptAnalysis: (raw.scriptAnalysis as ScriptAnalysis) || defaultScriptAnalysis(),
+    characters,
+    episodeAssets: (raw.episodeAssets as EpisodeAsset[]) || [],
+    shots: (raw.shots as Shot[]) || [],
+    videoSegments: (raw.videoSegments as VideoSegment[]) || [],
+    activePhase: (raw.activePhase as string) || "phase1",
+    completedPhases: (raw.completedPhases as string[]) || [],
+  };
+}
+
+function loadProjects(): ProjectSnapshot[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Record<string, unknown>[];
+    return parsed.map(migrateSnapshot);
+  } catch {
+    return [];
+  }
+}
+
+function saveProjects(projects: ProjectSnapshot[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  } catch {
+    // quota exceeded — silently ignore
+  }
 }
 
 function newSnapshot(overrides: Partial<ProjectSnapshot> = {}): ProjectSnapshot {
