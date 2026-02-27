@@ -213,3 +213,103 @@ export async function getAllUsers(limit = 100) {
     lastSignedIn: users.lastSignedIn,
   }).from(users).orderBy(desc(users.createdAt)).limit(limit);
 }
+
+// ─── 管理员：统计数据 ────────────────────────────────────────────────────────
+
+/** 获取所有用户（带积分余额），支持分页 */
+export async function adminGetUsers(page = 1, pageSize = 50) {
+  const db = await getDb();
+  if (!db) return { users: [], total: 0 };
+  const offset = (page - 1) * pageSize;
+  const list = await db.select({
+    id: users.id,
+    identifier: users.identifier,
+    identifierType: users.identifierType,
+    name: users.name,
+    role: users.role,
+    credits: users.credits,
+    createdAt: users.createdAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).orderBy(desc(users.createdAt)).limit(pageSize).offset(offset);
+  // 总数
+  const countResult = await db.select({ count: users.id }).from(users);
+  return { users: list, total: countResult.length };
+}
+
+/** AI 使用统计：按操作类型汇总消耗积分数和次数（最近 30 天） */
+export async function adminGetAiStats() {
+  const db = await getDb();
+  if (!db) return [];
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const logs = await db.select({
+    action: creditLogs.action,
+    delta: creditLogs.delta,
+    createdAt: creditLogs.createdAt,
+  }).from(creditLogs)
+    .orderBy(desc(creditLogs.createdAt))
+    .limit(10000);
+
+  // 按操作类型聚合
+  const stats: Record<string, { count: number; totalCredits: number }> = {};
+  for (const log of logs) {
+    if (log.delta >= 0) continue; // 跳过充值记录
+    const key = log.action;
+    if (!stats[key]) stats[key] = { count: 0, totalCredits: 0 };
+    stats[key].count += 1;
+    stats[key].totalCredits += Math.abs(log.delta);
+  }
+  return Object.entries(stats).map(([action, data]) => ({ action, ...data }));
+}
+
+/** 获取最近 30 天每日 AI 调用次数（折线图数据） */
+export async function adminGetDailyStats() {
+  const db = await getDb();
+  if (!db) return [];
+  const logs = await db.select({
+    action: creditLogs.action,
+    delta: creditLogs.delta,
+    createdAt: creditLogs.createdAt,
+  }).from(creditLogs)
+    .orderBy(desc(creditLogs.createdAt))
+    .limit(10000);
+
+  // 按日期聚合（最近 30 天）
+  const dailyMap: Record<string, { date: string; calls: number; credits: number }> = {};
+  const now = Date.now();
+  for (const log of logs) {
+    if (log.delta >= 0) continue;
+    const ts = log.createdAt.getTime();
+    if (now - ts > 30 * 24 * 60 * 60 * 1000) continue;
+    const date = log.createdAt.toISOString().slice(0, 10);
+    if (!dailyMap[date]) dailyMap[date] = { date, calls: 0, credits: 0 };
+    dailyMap[date].calls += 1;
+    dailyMap[date].credits += Math.abs(log.delta);
+  }
+  return Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** 获取全局概览数据 */
+export async function adminGetOverview() {
+  const db = await getDb();
+  if (!db) return { totalUsers: 0, totalCreditsGranted: 0, totalCreditsConsumed: 0, totalAiCalls: 0 };
+
+  const allUsers = await db.select({ id: users.id, credits: users.credits }).from(users);
+  const allLogs = await db.select({ delta: creditLogs.delta, action: creditLogs.action }).from(creditLogs);
+
+  const totalUsers = allUsers.length;
+  let totalCreditsGranted = 0;
+  let totalCreditsConsumed = 0;
+  let totalAiCalls = 0;
+
+  for (const log of allLogs) {
+    if (log.delta > 0) totalCreditsGranted += log.delta;
+    else {
+      totalCreditsConsumed += Math.abs(log.delta);
+      if (['analyze_script', 'generate_shot', 'generate_prompt'].includes(log.action)) {
+        totalAiCalls += 1;
+      }
+    }
+  }
+
+  return { totalUsers, totalCreditsGranted, totalCreditsConsumed, totalAiCalls };
+}
