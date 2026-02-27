@@ -31,10 +31,11 @@ export interface Episode {
 export interface Character {
   id: string;
   name: string;
-  role: string;
-  appearance: string;
-  costume: string;
-  marks: string;
+  role: string;          // 角色定位（主角/配角/反派等）
+  appearance: string;    // 外貌特征
+  costume: string;       // 服装/装甲描述
+  marks: string;         // 特殊标记
+  isMecha: boolean;      // 是否为机甲/载具类角色
   promptZh: string;
   promptEn: string;
 }
@@ -164,40 +165,133 @@ const SHOT_TEMPLATES_BY_TYPE: Record<string, Array<{
   ],
 };
 
+// ─── 人物识别黑名单（非角色词汇）─────────────────────────────────────────────
+const CHAR_BLACKLIST = new Set([
+  "旁白", "解说", "画外音", "字幕", "备注", "注释", "说明", "介绍", "简介",
+  "出场人物", "登场人物", "人物介绍", "角色介绍", "人物列表", "角色列表",
+  "一卡", "二卡", "三卡", "片头", "片尾", "开场", "结尾", "序章", "尾声",
+  "第一幕", "第二幕", "第三幕", "场景", "地点", "时间", "背景", "环境",
+  "导演", "编剧", "制作", "出品", "监制", "策划", "总监",
+  "内容", "故事", "剧情", "情节", "主题", "风格", "类型",
+]);
+
+// 机甲/载具关键词
+const MECHA_KEYWORDS = ["机甲", "战甲", "装甲", "机器人", "战机", "载具", "战舰", "飞船", "坦克", "战车", "机械"];
+
+// 清理人物名：去掉括号内的情绪/状态后缀，如「张三（快乐）」→「张三」
+function cleanCharName(raw: string): string {
+  return raw.replace(/[（(][^）)]*[）)]/g, "").replace(/[「」【】]/g, "").trim();
+}
+
+// 判断是否为有效人物名
+function isValidCharName(name: string): boolean {
+  const cleaned = cleanCharName(name);
+  if (!cleaned || cleaned.length < 2 || cleaned.length > 10) return false;
+  if (CHAR_BLACKLIST.has(cleaned)) return false;
+  // 过滤纯数字、纯标点、包含特殊符号的
+  if (/^[\d\s\-—–·•·]+$/.test(cleaned)) return false;
+  if (/[\d]{2,}/.test(cleaned)) return false; // 含两位以上数字（如EP01）
+  return true;
+}
+
+function isMechaChar(name: string, context: string): boolean {
+  return MECHA_KEYWORDS.some(kw => name.includes(kw) || context.includes(kw + name) || context.includes(name + kw));
+}
+
 function parseScript(text: string, projectType: string): ScriptAnalysis {
   if (!text.trim()) return { episodes: [], globalCharacters: [], isAnalyzed: false };
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
   const episodes: Episode[] = [];
-  const allChars = new Set<string>();
-  const epRegex = /^(第\s*[一二三四五六七八九十百\d]+\s*集|EP\s*\d+|Episode\s*\d+|第\s*\d+\s*集)/i;
-  const charRegex = /【([^】]{1,10})】|「([^」]{1,10})」|^([^\s：:，,。.！!？?]{1,8})[：:]/;
+  const allChars = new Map<string, string>(); // cleanedName → originalName
+  // EP-01 / 第一集 / Episode 1 等标记
+  const epRegex = /^(第\s*[一二三四五六七八九十百\d]+\s*集|EP[\s\-_]?\d+|Episode\s*\d+|第\s*\d+\s*集)/i;
+  // 前置介绍段落标记（序章、人物介绍、背景介绍等）
+  const introRegex = /^(序章|前言|简介|介绍|背景|说明|人物|角色|出场|登场|EP[\s\-_]?0*1\b|Episode\s*0*1\b|第\s*[零〇0]\s*集)/i;
+  const charRegex = /【([^】]{1,12})】|「([^」]{1,12})」|^([^\s：:，,。.！!？?（(【「]{1,10})[：:]/;
   let currentEpLines: string[] = [];
   let currentEpTitle = "";
   let epNum = 0;
+  let isIntroSection = false;
 
-  const flushEpisode = () => {
-    if (!currentEpLines.length && !currentEpTitle) return;
-    epNum++;
-    const content = currentEpLines.join(" ");
+  const extractCharsFromLines = (epLines: string[], content: string): string[] => {
     const chars: string[] = [];
-    currentEpLines.forEach(line => {
+    epLines.forEach(line => {
       const m = line.match(charRegex);
       if (m) {
-        const name = m[1] || m[2] || m[3];
-        if (name && name.length <= 8) { chars.push(name); allChars.add(name); }
+        const raw = m[1] || m[2] || m[3];
+        if (raw && isValidCharName(raw)) {
+          const cleaned = cleanCharName(raw);
+          if (!allChars.has(cleaned)) allChars.set(cleaned, cleaned);
+          chars.push(cleaned);
+        }
       }
     });
-    const sceneWords = ["室内", "室外", "夜晚", "白天", "森林", "城市", "学校", "家", "战场", "宫殿", "街道", "山顶", "海边", "地下", "天空"];
-    const scenes = sceneWords.filter(w => content.includes(w)).slice(0, 4);
-    const propWords = ["剑", "枪", "书", "信", "戒指", "面具", "地图", "钥匙", "手机", "车", "船", "飞机", "药", "符文", "魔法阵"];
-    const props = propWords.filter(w => content.includes(w)).slice(0, 3);
-    const duration = Math.max(1, Math.min(5, Math.round(content.length / 150)));
+    return Array.from(new Set(chars));
+  };
+
+  const extractScenesFromContent = (content: string): string[] => {
+    // 提取场景：优先匹配「场景名+环境」组合
+    const scenePatterns = [
+      /(?:在|于|来到|抵达|进入)([^，。！？\n]{2,12}(?:室|殿|场|地|区|城|村|山|海|林|街|楼|院|谷|洞|港|站|基地|遗迹|战场|空间))/g,
+      /\[([^\]]{2,15})\]/g, // [场景名] 格式
+      /（([^）]{2,15}(?:室|殿|场|地|区|城|村|山|海|林|街|楼|院|谷|洞|港|站|基地|遗迹|战场))）/g,
+    ];
+    const scenes = new Set<string>();
+    scenePatterns.forEach(pattern => {
+      let m;
+      while ((m = pattern.exec(content)) !== null) {
+        if (m[1] && m[1].length >= 2) scenes.add(m[1].trim());
+      }
+    });
+    // 备用：关键词匹配
+    if (scenes.size < 2) {
+      const fallback = ["指挥室", "战场", "基地", "实验室", "宫殿", "城市", "废墟", "森林", "海底", "太空", "地下", "天空", "街道", "山顶", "海边"];
+      fallback.forEach(w => { if (content.includes(w) && scenes.size < 5) scenes.add(w); });
+    }
+    return Array.from(scenes).slice(0, 5);
+  };
+
+  const extractPropsFromContent = (content: string): string[] => {
+    const propPatterns = [
+      /(?:拿起|握住|取出|使用|启动|激活|持有)([^，。！？\n]{1,8}(?:剑|枪|刀|盾|杖|弓|斧|锤|符|阵|石|晶|核|器|甲|盔|炮|弹|炸弹|装置|设备|芯片|数据|文件|地图|钥匙|戒指|项链|面具|徽章|旗帜))/g,
+    ];
+    const props = new Set<string>();
+    propPatterns.forEach(pattern => {
+      let m;
+      while ((m = pattern.exec(content)) !== null) {
+        if (m[1] && m[1].length >= 1) props.add(m[1].trim());
+      }
+    });
+    // 备用关键词
+    if (props.size < 2) {
+      const fallback = ["符文", "魔法阵", "钥匙", "地图", "面具", "徽章", "核心", "芯片", "武器", "装置"];
+      fallback.forEach(w => { if (content.includes(w) && props.size < 4) props.add(w); });
+    }
+    return Array.from(props).slice(0, 4);
+  };
+
+  const flushEpisode = (forceSkip = false) => {
+    if (!currentEpLines.length && !currentEpTitle) return;
+    if (forceSkip || isIntroSection) {
+      // 仍然收集全局人物，但不生成集数
+      extractCharsFromLines(currentEpLines, currentEpLines.join(" "));
+      currentEpLines = [];
+      currentEpTitle = "";
+      isIntroSection = false;
+      return;
+    }
+    epNum++;
+    const content = currentEpLines.join(" ");
+    const chars = extractCharsFromLines(currentEpLines, content);
+    const scenes = extractScenesFromContent(content);
+    const props = extractPropsFromContent(content);
+    const duration = Math.max(1, Math.min(8, Math.round(content.length / 120)));
     episodes.push({
       id: nanoid(), number: epNum, title: currentEpTitle || `第${epNum}集`,
-      duration, synopsis: content.slice(0, 200) + (content.length > 200 ? "..." : ""),
+      duration, synopsis: content.slice(0, 300) + (content.length > 300 ? "..." : ""),
       scenes: scenes.length ? scenes : ["主要场景"],
       props: props.length ? props : [],
-      characters: Array.from(new Set(chars)),
+      characters: chars,
     });
     currentEpLines = [];
     currentEpTitle = "";
@@ -205,41 +299,47 @@ function parseScript(text: string, projectType: string): ScriptAnalysis {
 
   const hasEpMarkers = lines.some(l => epRegex.test(l));
   if (!hasEpMarkers) {
-    const chars: string[] = [];
-    lines.forEach(line => {
-      const m = line.match(charRegex);
-      if (m) {
-        const name = m[1] || m[2] || m[3];
-        if (name && name.length <= 8) { chars.push(name); allChars.add(name); }
-      }
-    });
-    const sceneWords = ["室内", "室外", "夜晚", "白天", "森林", "城市", "学校", "家", "战场", "宫殿", "街道", "山顶", "海边", "地下", "天空"];
-    const scenes = sceneWords.filter(w => text.includes(w)).slice(0, 4);
-    const propWords = ["剑", "枪", "书", "信", "戒指", "面具", "地图", "钥匙", "手机", "车", "船", "飞机", "药", "符文", "魔法阵"];
-    const props = propWords.filter(w => text.includes(w)).slice(0, 3);
-    const duration = Math.max(1, Math.min(5, Math.round(text.length / 150)));
+    // 无分集标记，整体作为一集
+    const content = text;
+    const chars = extractCharsFromLines(lines, content);
+    const scenes = extractScenesFromContent(content);
+    const props = extractPropsFromContent(content);
+    const duration = Math.max(1, Math.min(8, Math.round(text.length / 120)));
     episodes.push({
       id: nanoid(), number: 1, title: "第1集",
-      duration, synopsis: text.slice(0, 200) + (text.length > 200 ? "..." : ""),
+      duration, synopsis: text.slice(0, 300) + (text.length > 300 ? "..." : ""),
       scenes: scenes.length ? scenes : ["主要场景"],
       props: props.length ? props : [],
-      characters: Array.from(new Set(chars)),
+      characters: chars,
     });
   } else {
     for (const line of lines) {
-      if (epRegex.test(line)) { flushEpisode(); currentEpTitle = line; }
-      else {
+      if (epRegex.test(line)) {
+        // 判断是否为序章/介绍段（EP-01 或含介绍关键词）
+        const isIntro = introRegex.test(line);
+        flushEpisode(isIntro);
+        currentEpTitle = line;
+        isIntroSection = isIntro;
+      } else {
         currentEpLines.push(line);
+        // 实时收集全局人物
         const m = line.match(charRegex);
         if (m) {
-          const name = m[1] || m[2] || m[3];
-          if (name && name.length <= 8) allChars.add(name);
+          const raw = m[1] || m[2] || m[3];
+          if (raw && isValidCharName(raw)) {
+            const cleaned = cleanCharName(raw);
+            allChars.set(cleaned, cleaned);
+          }
         }
       }
     }
     flushEpisode();
   }
-  return { episodes, globalCharacters: Array.from(allChars).filter(n => n.length >= 2), isAnalyzed: true };
+  return {
+    episodes,
+    globalCharacters: Array.from(allChars.keys()),
+    isAnalyzed: true,
+  };
 }
 
 function autoGenerateShotsForEpisode(episode: Episode, projectType: string): Shot[] {
@@ -356,8 +456,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setScriptAnalysis(analysis);
     if (analysis.episodes.length > 0) setActiveEpisodeId(analysis.episodes[0].id);
     if (analysis.globalCharacters.length > 0) {
+      const fullText = scriptText;
       setCharacters(analysis.globalCharacters.map(name => ({
-        id: nanoid(), name, role: "", appearance: "", costume: "", marks: "", promptZh: "", promptEn: "",
+        id: nanoid(), name, role: "", appearance: "", costume: "", marks: "",
+        isMecha: isMechaChar(name, fullText),
+        promptZh: "", promptEn: "",
       })));
     }
     const newAssets: EpisodeAsset[] = [];
@@ -373,7 +476,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addCharacter = useCallback((name = "") => {
-    setCharacters(prev => [...prev, { id: nanoid(), name, role: "", appearance: "", costume: "", marks: "", promptZh: "", promptEn: "" }]);
+    setCharacters(prev => [...prev, { id: nanoid(), name, role: "", appearance: "", costume: "", marks: "", isMecha: false, promptZh: "", promptEn: "" }]);
   }, []);
 
   const updateCharacter = useCallback((id: string, data: Partial<Character>) => {
@@ -385,8 +488,49 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const generateCharacterPrompt = useCallback((char: Character) => {
-    const zh = `角色设计参考图，干净的深灰色背景，画幅分为左右两部分。\n左侧部分：${char.name || "角色"}的电影级特写肖像，${char.appearance || "[面部特征]"}，专注而坚定的表情，电影级侧光照明。\n右侧部分：同一角色的标准三视图（正面、侧面、背面），全身站姿，采用标准正交视图。清晰展示${char.costume || "[服装描述]"}，${char.role || "[体型特征]"}${char.marks ? `，特殊标记：${char.marks}` : ""}。\n整体要求：左右两部分的角色设计、比例、细节必须完全一致。\n${projectInfo.styleZh || "[视觉风格标签]"}`;
-    const en = `Character design sheet, clean dark gray background, frame split into two parts.\nLeft side: A cinematic close-up portrait of ${char.name || "the character"}, ${char.appearance || "[facial features]"}, focused and determined expression, cinematic side lighting.\nRight side: A standard orthographic three-view turnaround (front, side, back) of the same character in a full-body standing pose. Clearly showing ${char.costume || "[clothing]"}, ${char.role || "[body type]"}${char.marks ? `, special marks: ${char.marks}` : ""}.\nOverall requirement: The character design, proportions, and details must be perfectly consistent between the left and right parts.\n${projectInfo.styleEn || "[Style tag]"}`;
+    const isMecha = char.isMecha;
+    // ── MJ7 人物/机甲提示词 ──
+    const charDesc = char.appearance ? char.appearance : (isMecha ? "精密机械结构，金属装甲表面" : "五官立体，气质独特");
+    const costumeDesc = char.costume ? char.costume : (isMecha ? "全身战甲，关节处有发光能量线" : "特色服装，细节丰富");
+    const bodyDesc = char.role ? char.role : (isMecha ? "高大威猛的机甲体型，比例夸张" : "标准人体比例，站姿自然");
+    const marksDesc = char.marks ? `，${char.marks}` : "";
+    const styleTag = projectInfo.styleZh || "";
+
+    let zh: string;
+    if (isMecha) {
+      zh = `机甲设计参考图，纯黑色背景，蓝图风格辅助线，画幅分为左右两部分。
+左侧：${char.name || "机甲"}的正面特写，${charDesc}，${costumeDesc}，发光能量核心，金属质感高光，科技感强烈。
+右侧：同一机甲的标准三视图（正面、侧面、背面），全身站姿，正交视图，清晰展示${bodyDesc}，装甲分层结构，武器系统${marksDesc}。
+整体要求：两部分机甲设计、比例、细节完全一致，无驾驶员，纯机甲参考。
+${styleTag}`;
+    } else {
+      zh = `角色设计参考图，干净的深灰色背景，画幅分为左右两部分。
+左侧：${char.name || "角色"}的电影级特写肖像，${charDesc}，${char.role ? char.role + "气质" : "专注坚定的表情"}，电影级侧光照明，面部细节清晰。
+右侧：同一角色的标准三视图（正面、侧面、背面），全身站姿，正交视图，清晰展示${costumeDesc}，${bodyDesc}${marksDesc}。
+整体要求：左右两部分角色设计、比例、细节完全一致。
+${styleTag}`;
+    }
+
+    let en: string;
+    const charDescEn = char.appearance || (isMecha ? "precision mechanical structure, metallic armor surface" : "defined facial features, distinctive temperament");
+    const costumeDescEn = char.costume || (isMecha ? "full-body battle armor, glowing energy lines at joints" : "distinctive costume with rich details");
+    const bodyDescEn = char.role || (isMecha ? "imposing mecha frame, exaggerated proportions" : "natural standing pose, standard proportions");
+    const marksDescEn = char.marks ? `, ${char.marks}` : "";
+    const styleTagEn = projectInfo.styleEn || "";
+
+    if (isMecha) {
+      en = `Mecha design reference sheet, pure black background with blueprint guide lines, frame split into two parts.
+Left side: Close-up front view of ${char.name || "the mecha"}, ${charDescEn}, ${costumeDescEn}, glowing energy core, metallic highlights, strong sci-fi aesthetic.
+Right side: Standard orthographic three-view turnaround (front, side, back) of the same mecha in standing pose. Clearly showing ${bodyDescEn}, layered armor structure, weapon systems${marksDescEn}.
+Overall: Both parts must be perfectly consistent in design, proportions, and details. No pilot, pure mecha reference.
+${styleTagEn}`;
+    } else {
+      en = `Character design sheet, clean dark gray background, frame split into two parts.
+Left side: Cinematic close-up portrait of ${char.name || "the character"}, ${charDescEn}, ${char.role ? char.role + " temperament" : "focused and determined expression"}, cinematic side lighting, clear facial details.
+Right side: Standard orthographic three-view turnaround (front, side, back) in full-body standing pose. Clearly showing ${costumeDescEn}, ${bodyDescEn}${marksDescEn}.
+Overall: Character design, proportions, and details must be perfectly consistent between both parts.
+${styleTagEn}`;
+    }
     return { zh, en };
   }, [projectInfo.styleZh, projectInfo.styleEn]);
 
@@ -403,10 +547,26 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const generateAssetPromptMJ = useCallback((asset: EpisodeAsset) => {
+    const style = projectInfo.styleZh || "";
+    const desc = asset.description || "";
+    const name = asset.name || "未命名";
     if (asset.type === "scene") {
-      return `${asset.name}场景设计图，${asset.description || "宏大壮观的场景"}，电影级构图，精细环境细节，多角度展示，无人物，纯场景参考。${projectInfo.styleZh || "[视觉风格标签]"} --ar 16:9`;
+      // 场景：基于描述内容分析，生成富描述 MJ7 提示词
+      const timeHint = desc.includes("夜") || desc.includes("黑暗") ? "深夜，月光或人造光源" :
+                       desc.includes("黄昏") || desc.includes("傍晚") ? "黄昏时分，橙红色天空" :
+                       desc.includes("清晨") || desc.includes("日出") ? "清晨，柔和晨光" : "自然光线，时间感明确";
+      const atmoHint = desc.includes("废墟") || desc.includes("破败") ? "废墟感，历史沧桑，植被侵蚀" :
+                       desc.includes("科技") || desc.includes("未来") ? "高科技环境，全息投影，金属质感" :
+                       desc.includes("战场") || desc.includes("战争") ? "战场废墟，硝烟弥漫，紧张氛围" :
+                       desc.includes("宫殿") || desc.includes("皇宫") ? "宏伟宫殿建筑，金碧辉煌，权力感" : "细节丰富，氛围感强烈";
+      return `${name}场景设计图，${desc || atmoHint}，${timeHint}，${atmoHint}，电影级宽画幅构图，精细环境细节，无人物，纯场景参考，远中近景层次分明，景深效果。${style} --ar 16:9`;
     }
-    return `${asset.name}道具设计图，${asset.description || "精致的道具"}，白色或深灰色纯净背景，多角度展示（正面、侧面、细节），高精度材质渲染。${projectInfo.styleZh || "[视觉风格标签]"} --ar 1:1`;
+    // 道具/机甲武器：基于描述生成富描述提示词
+    const materialHint = desc.includes("金属") || desc.includes("钢") ? "金属质感，高光反射，工业感" :
+                         desc.includes("魔法") || desc.includes("符文") ? "魔法符文发光，神秘能量流动" :
+                         desc.includes("古老") || desc.includes("古代") ? "古老工艺，岁月痕迹，历史感" :
+                         desc.includes("科技") || desc.includes("能量") ? "科技感，能量核心发光，精密结构" : "精致工艺，细节丰富";
+    return `${name}道具设计图，${desc || materialHint}，${materialHint}，深灰色纯净背景，多角度展示（正面、侧面、细节特写），高精度材质渲染，产品级展示光效。${style} --ar 1:1`;
   }, [projectInfo.styleZh]);
 
   const addShot = useCallback((episodeId: string) => {

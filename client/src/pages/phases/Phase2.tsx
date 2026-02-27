@@ -165,14 +165,14 @@ export default function Phase2() {
         </div>
       </section>
 
-      {/* ── SECTION B: Global Characters ── */}
+      {/* ── SECTION B: Global Characters & Mecha ── */}
       <section>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold flex items-center gap-2"
             style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
             <span className="px-2 py-0.5 rounded text-[10px]"
               style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>A</span>
-            全局人物资产提示词（不分集，所有角色）
+            人物与机甲资产提示词（不分集，全局统一）
           </h3>
           <div className="flex gap-2">
             {characters.length > 0 && (
@@ -192,10 +192,16 @@ export default function Phase2() {
           </div>
         </div>
 
+        <div className="mb-4 p-2.5 rounded text-xs flex items-center gap-2"
+          style={{ background: "oklch(0.20 0.015 65 / 0.3)", border: "1px solid oklch(0.75 0.17 65 / 0.25)" }}>
+          <span style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>工具：MJ7</span>
+          <span style={{ color: "oklch(0.55 0.01 240)" }}>— 用于探索人物/机甲风格参考图。机甲角色自动识别，提示词模板不同。</span>
+        </div>
+
         {characters.length === 0 && (
           <div className="text-center py-8 rounded"
             style={{ border: "1px dashed oklch(0.28 0.008 240)", color: "oklch(0.45 0.008 240)" }}>
-            <p className="text-sm">从剧本解析后自动填充，或手动添加角色</p>
+            <p className="text-sm">从剧本解析后自动填充，或手动添加角色/机甲</p>
           </div>
         )}
 
@@ -205,9 +211,22 @@ export default function Phase2() {
               style={{ border: "1px solid oklch(0.28 0.008 240)" }}>
               <div className="flex items-center justify-between px-4 py-2.5"
                 style={{ background: "oklch(0.15 0.006 240)", borderBottom: "1px solid oklch(0.28 0.008 240)" }}>
-                <span className="text-xs font-bold" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
-                  CHAR_{String(idx + 1).padStart(2, "0")} · {char.name || "未命名"}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {char.isMecha ? "MECHA" : "CHAR"}_{String(idx + 1).padStart(2, "0")} · {char.name || "未命名"}
+                  </span>
+                  {char.isMecha && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-widest"
+                      style={{ background: "oklch(0.55 0.2 280 / 0.2)", border: "1px solid oklch(0.55 0.2 280 / 0.5)", color: "oklch(0.70 0.18 280)", fontFamily: "'JetBrains Mono', monospace" }}>
+                      机甲
+                    </span>
+                  )}
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={char.isMecha} onChange={e => updateCharacter(char.id, { isMecha: e.target.checked })}
+                      className="w-3 h-3 accent-amber-400" />
+                    <span className="text-[9px]" style={{ color: "oklch(0.50 0.01 240)" }}>机甲</span>
+                  </label>
+                </div>
                 <button onClick={() => removeCharacter(char.id)} className="p-1 rounded hover:bg-red-500/10">
                   <Trash2 className="w-3.5 h-3.5" style={{ color: "oklch(0.55 0.2 25)" }} />
                 </button>
@@ -223,7 +242,7 @@ export default function Phase2() {
                   ].map(({ key, label, placeholder }) => (
                     <div key={key} className={key === "appearance" || key === "costume" ? "col-span-2" : ""}>
                       <Label className="text-xs mb-1.5 block" style={{ color: "oklch(0.65 0.01 240)" }}>{label}</Label>
-                      <Input value={char[key as keyof typeof char]} onChange={e => updateCharacter(char.id, { [key]: e.target.value })}
+                      <Input value={String(char[key as keyof typeof char] ?? "")} onChange={e => updateCharacter(char.id, { [key]: e.target.value })}
                         placeholder={placeholder} className="text-xs h-8"
                         style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
                     </div>
@@ -233,12 +252,12 @@ export default function Phase2() {
                   className="flex items-center gap-2 text-xs"
                   style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
                   <Wand2 className="w-3.5 h-3.5" />
-                  生成 Nanobananapro 提示词
+                  生成 MJ7 提示词
                 </Button>
                 {(generatedPrompts[char.id] || (char.promptZh && char.promptEn)) && (
                   <div className="space-y-2">
-                    <PromptBox label="中文提示词 (Nanobananapro)" content={generatedPrompts[char.id]?.zh || char.promptZh} lang="zh" />
-                    <PromptBox label="English Prompt (Nanobananapro)" content={generatedPrompts[char.id]?.en || char.promptEn} lang="en" />
+                    <PromptBox label={`中文提示词 · MJ7 · ${char.isMecha ? "机甲模板" : "人物模板"}`} content={generatedPrompts[char.id]?.zh || char.promptZh} lang="zh" />
+                    <PromptBox label={`English Prompt · MJ7 · ${char.isMecha ? "Mecha Template" : "Character Template"}`} content={generatedPrompts[char.id]?.en || char.promptEn} lang="en" />
                   </div>
                 )}
               </div>
@@ -247,14 +266,21 @@ export default function Phase2() {
         </div>
       </section>
 
-      {/* ── SECTION C: Per-Episode Assets ── */}
+      {/* ── SECTION C: Per-Episode Scene & Prop Assets ── */}
       <section>
-        <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"
-          style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
-          <span className="px-2 py-0.5 rounded text-[10px]"
-            style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>B</span>
-          分集资产提示词（场景 + 道具，MJ7 风格）
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold flex items-center gap-2"
+            style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
+            <span className="px-2 py-0.5 rounded text-[10px]"
+              style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>B</span>
+            分集场景 & 道具资产提示词（按集管理）
+          </h3>
+        </div>
+        <div className="mb-4 p-2.5 rounded text-xs flex items-center gap-2"
+          style={{ background: "oklch(0.20 0.015 65 / 0.3)", border: "1px solid oklch(0.75 0.17 65 / 0.25)" }}>
+          <span style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>工具：MJ7</span>
+          <span style={{ color: "oklch(0.55 0.01 240)" }}>— 场景多角度参考图 / 道具展示图。人物不在此列，见上方 A 区。</span>
+        </div>
 
         {episodes.length === 0 ? (
           <div className="text-center py-8 rounded"
