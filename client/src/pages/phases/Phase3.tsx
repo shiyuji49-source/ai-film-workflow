@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, ChevronRight, Plus, Trash2, Wand2, BarChart2, List, Loader2 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2, Wand2, BarChart2, List, Loader2, BookOpen, X, Search } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
@@ -253,12 +253,53 @@ export default function Phase3() {
   );
   const [viewMode, setViewMode] = useState<"list" | "timeline">("list");
   const [generatingEp, setGeneratingEp] = useState<string | null>(null);
+  const [scriptPanelOpen, setScriptPanelOpen] = useState(false);
+  const [scriptSearch, setScriptSearch] = useState("");
+  const scriptContentRef = useRef<HTMLDivElement>(null);
 
   const generateShotsMutation = trpc.ai.generateShots.useMutation();
 
   const episodes = scriptAnalysis.episodes;
   const activeEp = episodes.find(e => e.id === activeEpTab);
   const epShots = useMemo(() => shots.filter(s => s.episodeId === activeEpTab), [shots, activeEpTab]);
+
+  // 当前集对应的原剧本文本
+  const currentEpisodeScript = useMemo(() => {
+    if (!activeEp) return scriptText;
+    return extractEpisodeScript(scriptText, activeEp.number, scriptAnalysis.episodes) || scriptText;
+  }, [scriptText, activeEp, scriptAnalysis.episodes]);
+
+  // 将文本转义为 HTML 安全内容，并添加语法高亮
+  const renderScript = useMemo(() => {
+    // 1. 先对原始文本进行 HTML 转义
+    const safe = currentEpisodeScript
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    // 2. 应用语法高亮
+    let html = safe
+      .replace(/(EP[\s\-_]?\d+|第\s*\d+\s*集)/g, '<span style="color:oklch(0.75 0.17 65);font-weight:700">$1</span>')
+      .replace(/(【[^】]+】)/g, '<span style="color:oklch(0.65 0.15 200);font-weight:600">$1</span>')
+      .replace(/(「[^」]+」)/g, '<span style="color:oklch(0.70 0.18 85)">$1</span>');
+    // 3. 如果有搜索词，在 HTML 安全内容中高亮（要小心不要匹配到标签内部）
+    if (scriptSearch.trim()) {
+      const escapedSearch = scriptSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // 只匹配文本节点（不在 HTML 标签内部）
+      html = html.replace(
+        new RegExp(`(${escapedSearch})(?![^<]*>)`, "gi"),
+        '<mark style="background:oklch(0.75 0.17 65 / 0.35);color:oklch(0.95 0.005 60);border-radius:2px;padding:0 1px">$1</mark>'
+      );
+    }
+    return html;
+  }, [currentEpisodeScript, scriptSearch]);
+
+  // 搜索时自动滚动到第一个匹配项
+  useEffect(() => {
+    if (scriptSearch && scriptContentRef.current) {
+      const mark = scriptContentRef.current.querySelector("mark");
+      if (mark) mark.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [renderScript, scriptSearch]);
 
   const handleAutoGenerate = async () => {
     if (!activeEpTab || !activeEp) { toast.error("请先选择集数"); return; }
@@ -292,6 +333,124 @@ export default function Phase3() {
   };
 
   return (
+    <div className="relative">
+    {/* 原剧本侧边栏 — 固定定位抽屉式面板 */}
+    <div
+      className="fixed top-0 right-0 h-full z-50 flex"
+      style={{ pointerEvents: scriptPanelOpen ? "auto" : "none" }}
+    >
+      {/* 折叠按鈕 — 始终可点击 */}
+      <div
+        className="flex-shrink-0 flex items-start pt-24"
+        style={{ pointerEvents: "auto" }}
+      >
+        <button
+          onClick={() => setScriptPanelOpen(v => !v)}
+          title={scriptPanelOpen ? "收起剧本" : "查看原剧本"}
+          className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-l-lg transition-all duration-200"
+          style={{
+            background: scriptPanelOpen ? "oklch(0.20 0.006 240)" : "oklch(0.75 0.17 65 / 0.15)",
+            border: "1px solid oklch(0.75 0.17 65 / 0.4)",
+            borderRight: "none",
+            color: "oklch(0.75 0.17 65)",
+            writingMode: "vertical-rl",
+          }}
+        >
+          {scriptPanelOpen ? (
+            <ChevronRight className="w-3.5 h-3.5 mb-1" style={{ writingMode: "horizontal-tb" }} />
+          ) : (
+            <ChevronLeft className="w-3.5 h-3.5 mb-1" style={{ writingMode: "horizontal-tb" }} />
+          )}
+          <BookOpen className="w-3.5 h-3.5" style={{ writingMode: "horizontal-tb" }} />
+          <span className="text-[10px] tracking-widest font-bold" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+            原剧本
+          </span>
+        </button>
+      </div>
+
+      {/* 侧边栏面板 */}
+      <div
+        className="flex flex-col h-full transition-all duration-300 ease-in-out overflow-hidden"
+        style={{
+          width: scriptPanelOpen ? "380px" : "0px",
+          background: "oklch(0.14 0.005 240)",
+          borderLeft: "1px solid oklch(0.28 0.008 240)",
+          boxShadow: scriptPanelOpen ? "-8px 0 32px oklch(0 0 0 / 0.5)" : "none",
+        }}
+      >
+        {scriptPanelOpen && (
+          <>
+            {/* 面板标题栏 */}
+            <div className="flex-shrink-0 flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: "1px solid oklch(0.22 0.006 240)", background: "oklch(0.16 0.006 240)" }}>
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4" style={{ color: "oklch(0.75 0.17 65)" }} />
+                <span className="text-sm font-bold" style={{ color: "oklch(0.88 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                  原剧本
+                </span>
+                {activeEp && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded"
+                    style={{ background: "oklch(0.75 0.17 65 / 0.15)", color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    EP_{String(activeEp.number).padStart(2, "0")}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setScriptPanelOpen(false)} className="p-1 rounded hover:bg-white/5"
+                style={{ color: "oklch(0.50 0.01 240)" }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 搜索栏 */}
+            <div className="flex-shrink-0 px-3 py-2" style={{ borderBottom: "1px solid oklch(0.20 0.006 240)" }}>
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded"
+                style={{ background: "oklch(0.18 0.006 240)", border: "1px solid oklch(0.28 0.008 240)" }}>
+                <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.45 0.008 240)" }} />
+                <input
+                  type="text"
+                  value={scriptSearch}
+                  onChange={e => setScriptSearch(e.target.value)}
+                  placeholder="搜索剧本内容…"
+                  className="flex-1 bg-transparent text-xs outline-none"
+                  style={{ color: "oklch(0.85 0.005 60)", caretColor: "oklch(0.75 0.17 65)" }}
+                />
+                {scriptSearch && (
+                  <button onClick={() => setScriptSearch("")} className="flex-shrink-0">
+                    <X className="w-3 h-3" style={{ color: "oklch(0.45 0.008 240)" }} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 剧本内容 */}
+            <div ref={scriptContentRef} className="flex-1 overflow-y-auto px-4 py-3"
+              style={{ scrollbarWidth: "thin", scrollbarColor: "oklch(0.28 0.008 240) transparent" }}>
+              {currentEpisodeScript ? (
+                <div
+                  className="text-xs leading-relaxed whitespace-pre-wrap"
+                  style={{ color: "oklch(0.70 0.008 240)", fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", lineHeight: "1.8" }}
+                  dangerouslySetInnerHTML={{ __html: renderScript }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-32 gap-2"
+                  style={{ color: "oklch(0.40 0.008 240)" }}>
+                  <BookOpen className="w-8 h-8 opacity-30" />
+                  <p className="text-xs">请先在阶段一上传剧本</p>
+                </div>
+              )}
+            </div>
+
+            {/* 底部提示 */}
+            <div className="flex-shrink-0 px-4 py-2" style={{ borderTop: "1px solid oklch(0.20 0.006 240)" }}>
+              <p className="text-[10px]" style={{ color: "oklch(0.35 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+                显示当前集剧本内容 · 可搜索关键词
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+
     <div className="space-y-8">
       {/* Phase header */}
       <div className="flex items-start gap-4">
@@ -456,6 +615,7 @@ export default function Phase3() {
           <ChevronRight className="w-4 h-4" />
         </Button>
       </div>
+    </div>
     </div>
   );
 }
