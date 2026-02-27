@@ -61,6 +61,10 @@ export default function AdminPage() {
   const [grantAmount, setGrantAmount] = useState("1000");
   const [grantNote, setGrantNote] = useState("");
   const [activeTab, setActiveTab] = useState<"overview" | "users" | "stats">("overview");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchGrantDialog, setBatchGrantDialog] = useState(false);
+  const [batchGrantAmount, setBatchGrantAmount] = useState("1000");
+  const [batchGrantNote, setBatchGrantNote] = useState("");
 
   const { data: overview, refetch: refetchOverview } = trpc.admin.getOverview.useQuery(undefined, { enabled: !!user && user.role === "admin" });
   const { data: usersData, refetch: refetchUsers } = trpc.admin.getUsers.useQuery({ page, pageSize: 20 }, { enabled: !!user && user.role === "admin" });
@@ -79,6 +83,28 @@ export default function AdminPage() {
     onError: (err) => {
       toast.error(`充值失败：${err.message}`);
     },
+  });
+
+  const batchGrantMutation = trpc.admin.batchGrantCredits.useMutation({
+    onSuccess: (data) => {
+      toast.success(`批量充值成功，共 ${data.count} 名用户`);
+      setBatchGrantDialog(false);
+      setBatchGrantAmount("1000");
+      setBatchGrantNote("");
+      setSelectedIds(new Set());
+      refetchUsers();
+      refetchOverview();
+    },
+    onError: (err) => toast.error(`批量充值失败：${err.message}`),
+  });
+
+  const batchSetRoleMutation = trpc.admin.batchSetRole.useMutation({
+    onSuccess: (data) => {
+      toast.success(`批量修改角色成功，共 ${data.count} 名用户`);
+      setSelectedIds(new Set());
+      refetchUsers();
+    },
+    onError: (err) => toast.error(`批量修改角色失败：${err.message}`),
   });
 
   const setRoleMutation = trpc.admin.setUserRole.useMutation({
@@ -258,25 +284,99 @@ export default function AdminPage() {
         {/* ── 用户管理 Tab ── */}
         {activeTab === "users" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm" style={{ color: "oklch(0.55 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
-                共 {usersData?.total ?? 0} 名用户
-              </p>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => refetchUsers()}
-                style={{ color: "oklch(0.55 0.008 240)" }}
-              >
-                <RefreshCw className="w-3 h-3 mr-1" />
-                刷新
-              </Button>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-3">
+                <p className="text-sm" style={{ color: "oklch(0.55 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+                  共 {usersData?.total ?? 0} 名用户
+                </p>
+                {selectedIds.size > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "oklch(0.75 0.17 65 / 0.15)", color: "oklch(0.75 0.17 65)", border: "1px solid oklch(0.75 0.17 65 / 0.3)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    已选 {selectedIds.size} 人
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedIds.size > 0 && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-3 text-xs"
+                      style={{ color: "oklch(0.75 0.17 65)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}
+                      onClick={() => setBatchGrantDialog(true)}
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      批量充值
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-3 text-xs"
+                      style={{ color: "oklch(0.65 0.15 250)", border: "1px solid oklch(0.65 0.15 250 / 0.3)" }}
+                      onClick={() => {
+                        if (confirm(`将选中的 ${selectedIds.size} 名用户设为管理员？`)) {
+                          batchSetRoleMutation.mutate({ userIds: Array.from(selectedIds), role: "admin" });
+                        }
+                      }}
+                    >
+                      <Shield className="w-3 h-3 mr-1" />
+                      设为管理员
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-3 text-xs"
+                      style={{ color: "oklch(0.55 0.008 240)", border: "1px solid oklch(0.28 0.008 240)" }}
+                      onClick={() => {
+                        if (confirm(`将选中的 ${selectedIds.size} 名用户设为普通用户？`)) {
+                          batchSetRoleMutation.mutate({ userIds: Array.from(selectedIds), role: "user" });
+                        }
+                      }}
+                    >
+                      设为普通用户
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      style={{ color: "oklch(0.55 0.008 240)" }}
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      取消选择
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => refetchUsers()}
+                  style={{ color: "oklch(0.55 0.008 240)" }}
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  刷新
+                </Button>
+              </div>
             </div>
 
             <div className="rounded-xl overflow-hidden" style={{ border: "1px solid oklch(0.22 0.006 240)" }}>
               <Table>
                 <TableHeader>
                   <TableRow style={{ background: "oklch(0.17 0.006 240)", borderColor: "oklch(0.22 0.006 240)" }}>
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        className="cursor-pointer"
+                        style={{ accentColor: "oklch(0.75 0.17 65)" }}
+                        checked={(usersData?.users?.length ?? 0) > 0 && (usersData?.users ?? []).every(u => selectedIds.has(u.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds(new Set(usersData?.users?.map(u => u.id) ?? []));
+                          } else {
+                            setSelectedIds(new Set());
+                          }
+                        }}
+                      />
+                    </TableHead>
                     {["ID", "账号", "昵称", "角色", "积分余额", "注册时间", "最后登录", "操作"].map((h) => (
                       <TableHead key={h} className="text-xs" style={{ color: "oklch(0.50 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
                         {h}
@@ -288,9 +388,31 @@ export default function AdminPage() {
                   {(usersData?.users ?? []).map((u) => (
                     <TableRow
                       key={u.id}
-                      style={{ borderColor: "oklch(0.20 0.006 240)", background: "oklch(0.15 0.005 240)" }}
-                      className="hover:bg-[oklch(0.18_0.006_240)] transition-colors"
+                      style={{ borderColor: "oklch(0.20 0.006 240)", background: selectedIds.has(u.id) ? "oklch(0.18 0.008 240)" : "oklch(0.15 0.005 240)" }}
+                      className="hover:bg-[oklch(0.18_0.006_240)] transition-colors cursor-pointer"
+                      onClick={() => {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(u.id)) next.delete(u.id); else next.add(u.id);
+                          return next;
+                        });
+                      }}
                     >
+                      <TableCell className="w-10" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="cursor-pointer"
+                          style={{ accentColor: "oklch(0.75 0.17 65)" }}
+                          checked={selectedIds.has(u.id)}
+                          onChange={(e) => {
+                            setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(u.id); else next.delete(u.id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </TableCell>
                       <TableCell className="text-xs font-mono" style={{ color: "oklch(0.45 0.008 240)" }}>
                         {u.id}
                       </TableCell>
@@ -462,6 +584,88 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {/* 批量充值对话框 */}
+      {batchGrantDialog && (
+        <Dialog open onOpenChange={() => setBatchGrantDialog(false)}>
+          <DialogContent style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)" }}>
+            <DialogHeader>
+              <DialogTitle style={{ color: "oklch(0.88 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                批量充値积分
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-sm" style={{ color: "oklch(0.65 0.008 240)" }}>
+                将向选中的 <span style={{ color: "oklch(0.75 0.17 65)", fontWeight: 600 }}>{selectedIds.size} 名用户</span> 充値积分
+              </p>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "oklch(0.55 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+                  充値数量
+                </label>
+                <Input
+                  type="number"
+                  value={batchGrantAmount}
+                  onChange={(e) => setBatchGrantAmount(e.target.value)}
+                  min={1}
+                  className="text-sm"
+                  style={{ background: "oklch(0.20 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }}
+                />
+                <div className="flex gap-2 mt-2">
+                  {[1000, 5000, 10000, 50000].map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setBatchGrantAmount(String(v))}
+                      className="text-xs px-2 py-1 rounded transition-colors"
+                      style={{
+                        background: batchGrantAmount === String(v) ? "oklch(0.75 0.17 65 / 0.2)" : "oklch(0.22 0.006 240)",
+                        color: batchGrantAmount === String(v) ? "oklch(0.75 0.17 65)" : "oklch(0.55 0.008 240)",
+                        border: `1px solid ${batchGrantAmount === String(v) ? "oklch(0.75 0.17 65 / 0.4)" : "oklch(0.28 0.008 240)"}`,
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                    >
+                      +{v.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "oklch(0.55 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+                  备注（可选）
+                </label>
+                <Input
+                  value={batchGrantNote}
+                  onChange={(e) => setBatchGrantNote(e.target.value)}
+                  placeholder="如：活动赠送"
+                  className="text-sm"
+                  style={{ background: "oklch(0.20 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => setBatchGrantDialog(false)}
+                style={{ color: "oklch(0.55 0.008 240)" }}
+              >
+                取消
+              </Button>
+              <Button
+                disabled={batchGrantMutation.isPending || !batchGrantAmount || Number(batchGrantAmount) < 1}
+                onClick={() => {
+                  batchGrantMutation.mutate({
+                    userIds: Array.from(selectedIds),
+                    amount: Number(batchGrantAmount),
+                    note: batchGrantNote || undefined,
+                  });
+                }}
+                style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.13 0.005 240)" }}
+              >
+                {batchGrantMutation.isPending ? "充値中..." : `确认充値 ${Number(batchGrantAmount).toLocaleString()} 积分 × ${selectedIds.size} 人`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* 充值对话框 */}
       {grantDialog?.open && (

@@ -4,6 +4,7 @@ import { aiRouter } from "./routers/ai";
 import { authRouter } from "./routers/auth";
 import { projectsRouter } from "./routers/projects";
 import { adminRouter } from "./routers/admin";
+import { paymentRouter } from "./routers/payment";
 
 export const appRouter = router({
   system: systemRouter,
@@ -11,6 +12,7 @@ export const appRouter = router({
   auth: authRouter,
   projects: projectsRouter,
   admin: adminRouter,
+  payment: paymentRouter,
 });
 
 export type AppRouter = typeof appRouter;

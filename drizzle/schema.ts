@@ -55,6 +55,7 @@ export const creditLogs = mysqlTable("creditLogs", {
   action: mysqlEnum("action", [
     "register_bonus",    // 注册赠送
     "admin_grant",       // 管理员充值
+    "stripe_purchase",   // Stripe 购买积分
     "analyze_script",    // AI 解析剧本 -1
     "generate_shot",     // AI 生成分镜 -1/个
     "generate_prompt",   // AI 生成视频提示词 -3/条
@@ -68,6 +69,25 @@ export const creditLogs = mysqlTable("creditLogs", {
 
 export type CreditLog = typeof creditLogs.$inferSelect;
 export type InsertCreditLog = typeof creditLogs.$inferInsert;
+
+// ─── 订单表（Stripe 支付记录）────────────────────────────────────────────────
+export const orders = mysqlTable("orders", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  /** Stripe Checkout Session ID */
+  stripeSessionId: varchar("stripeSessionId", { length: 256 }).unique(),
+  /** 购买的积分数量 */
+  credits: int("credits").notNull(),
+  /** 支付金额（分，人民币） */
+  amountFen: int("amountFen").notNull(),
+  /** 订单状态 */
+  status: mysqlEnum("status", ["pending", "paid", "failed", "refunded"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  paidAt: timestamp("paidAt"),
+});
+
+export type Order = typeof orders.$inferSelect;
+export type InsertOrder = typeof orders.$inferInsert;
 
 // ─── 团队表（预留，后续团队协作使用）────────────────────────────────────────
 export const teams = mysqlTable("teams", {

@@ -58,6 +58,35 @@ export const adminRouter = router({
       return db.adminGetDailyStats();
     }),
 
+  /** 批量充值积分 */
+  batchGrantCredits: adminProcedure
+    .input(z.object({
+      userIds: z.array(z.number().int()).min(1).max(200),
+      amount: z.number().int().min(1).max(1000000),
+      note: z.string().max(200).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const results = await Promise.all(
+        input.userIds.map(uid => db.grantCredits(uid, input.amount, input.note))
+      );
+      return { success: true, count: results.length };
+    }),
+
+  /** 批量修改角色 */
+  batchSetRole: adminProcedure
+    .input(z.object({
+      userIds: z.array(z.number().int()).min(1).max(200),
+      role: z.enum(["user", "admin"]),
+    }))
+    .mutation(async ({ input }) => {
+      const dbConn = await db.getDb();
+      if (!dbConn) throw new Error("数据库不可用");
+      const { users } = await import("../../drizzle/schema");
+      const { inArray } = await import("drizzle-orm");
+      await dbConn.update(users).set({ role: input.role }).where(inArray(users.id, input.userIds));
+      return { success: true, count: input.userIds.length };
+    }),
+
   /** 获取用户积分流水 */
   getUserCreditLogs: adminProcedure
     .input(z.object({
