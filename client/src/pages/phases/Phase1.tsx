@@ -1,4 +1,4 @@
-// DESIGN: "导演手册" 工业风暗色系 — Phase 1: Project Definition
+// DESIGN: "导演手册" 工业风暗色系 — Phase 1: Project Definition + Script Upload
 import { useProject } from "@/contexts/ProjectContext";
 import { STYLE_TAGS } from "@/lib/workflowData";
 import { Input } from "@/components/ui/input";
@@ -7,13 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, ChevronRight, AlertTriangle } from "lucide-react";
-import { useState } from "react";
-import PromptBox from "@/components/PromptBox";
+import { CheckCircle2, ChevronRight, AlertTriangle, Upload, FileText, Wand2, Users, MapPin, Package } from "lucide-react";
+import { useState, useRef } from "react";
+import { toast } from "sonner";
 
 export default function Phase1() {
-  const { projectInfo, updateProjectInfo, markPhaseComplete, setActivePhase } = useProject();
+  const { projectInfo, updateProjectInfo, scriptText, setScriptText,
+    scriptAnalysis, analyzeScript, updateEpisode, markPhaseComplete, setActivePhase } = useProject();
   const [selectedStyleIdx, setSelectedStyleIdx] = useState<number | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSelectStyle = (idx: number) => {
     setSelectedStyleIdx(idx);
@@ -21,12 +24,34 @@ export default function Phase1() {
     updateProjectInfo({ styleZh: tag.zh, styleEn: tag.en });
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setScriptText(text);
+      toast.success(`已加载剧本：${file.name}`);
+    };
+    reader.readAsText(file, "utf-8");
+  };
+
+  const handleAnalyze = () => {
+    if (!scriptText.trim()) { toast.error("请先输入或上传剧本内容"); return; }
+    setIsAnalyzing(true);
+    setTimeout(() => {
+      analyzeScript();
+      setIsAnalyzing(false);
+      toast.success(`解析完成，共识别 ${scriptAnalysis.episodes.length || "?"} 集`);
+    }, 600);
+  };
+
   const handleComplete = () => {
+    if (!projectInfo.title || !projectInfo.type) { toast.error("请填写片名和类型"); return; }
+    if (!scriptAnalysis.isAnalyzed) { toast.error("请先完成剧本解析"); return; }
     markPhaseComplete("phase1");
     setActivePhase("phase2");
   };
-
-  const isReady = projectInfo.title && projectInfo.type && (projectInfo.styleZh || projectInfo.styleEn);
 
   return (
     <div className="space-y-8">
@@ -41,41 +66,30 @@ export default function Phase1() {
             项目定义
           </h2>
           <p className="text-sm mt-1" style={{ color: "oklch(0.55 0.01 240)" }}>
-            确定项目基础信息与视觉风格标签 — 这是全片一致性的绝对基石
+            填写基础信息 → 上传剧本 → AI 自动解析分集、人物、场景、道具
           </p>
         </div>
       </div>
 
-      {/* Section 1.1: Basic Info */}
+      {/* 1.1 Basic Info */}
       <section>
         <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"
           style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
-          <span className="step-badge px-2 py-0.5 rounded text-[10px]"
-            style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>
-            1.1
-          </span>
+          <span className="px-2 py-0.5 rounded text-[10px]"
+            style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>1.1</span>
           项目基础信息
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
             { key: "title", label: "片名", placeholder: "输入项目名称" },
-            { key: "episodes", label: "集数/时长", placeholder: "如：1集 / 3分钟" },
             { key: "audience", label: "目标受众", placeholder: "如：18-35岁动漫爱好者" },
             { key: "selling", label: "核心卖点", placeholder: "一句话概括最大看点" },
           ].map(({ key, label, placeholder }) => (
             <div key={key} className="space-y-1.5">
               <Label className="text-xs" style={{ color: "oklch(0.65 0.01 240)" }}>{label}</Label>
-              <Input
-                value={projectInfo[key as keyof typeof projectInfo]}
-                onChange={e => updateProjectInfo({ [key]: e.target.value })}
-                placeholder={placeholder}
-                className="text-sm h-9"
-                style={{
-                  background: "oklch(0.17 0.006 240)",
-                  border: "1px solid oklch(0.28 0.008 240)",
-                  color: "oklch(0.88 0.005 60)",
-                }}
-              />
+              <Input value={projectInfo[key as keyof typeof projectInfo]} onChange={e => updateProjectInfo({ [key]: e.target.value })}
+                placeholder={placeholder} className="text-sm h-9"
+                style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
             </div>
           ))}
           <div className="space-y-1.5">
@@ -120,15 +134,13 @@ export default function Phase1() {
         </div>
       </section>
 
-      {/* Section 1.2: Style Tags */}
+      {/* 1.2 Style */}
       <section>
         <div className="flex items-center gap-2 mb-2">
           <h3 className="text-sm font-semibold flex items-center gap-2"
             style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            <span className="step-badge px-2 py-0.5 rounded text-[10px]"
-              style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>
-              1.2
-            </span>
+            <span className="px-2 py-0.5 rounded text-[10px]"
+              style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>1.2</span>
             视觉风格定义
           </h3>
           <Badge variant="outline" className="text-[10px] px-2 py-0"
@@ -137,91 +149,181 @@ export default function Phase1() {
             禁止引用具体作品名称
           </Badge>
         </div>
-        <p className="text-xs mb-4" style={{ color: "oklch(0.50 0.01 240)" }}>
-          选择一个预设风格标签，或在下方自定义。风格标签将附加在所有提示词末尾，确保全片视觉一致性。
-        </p>
-
-        {/* Preset style cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
           {STYLE_TAGS.map((tag, idx) => (
-            <button
-              key={tag.type}
-              onClick={() => handleSelectStyle(idx)}
+            <button key={tag.type} onClick={() => handleSelectStyle(idx)}
               className="text-left p-3 rounded transition-all duration-200"
-              style={{
-                background: selectedStyleIdx === idx ? "oklch(0.75 0.17 65 / 0.12)" : "oklch(0.17 0.006 240)",
-                border: `1px solid ${selectedStyleIdx === idx ? "oklch(0.75 0.17 65 / 0.6)" : "oklch(0.28 0.008 240)"}`,
-              }}
-            >
+              style={{ background: selectedStyleIdx === idx ? "oklch(0.75 0.17 65 / 0.12)" : "oklch(0.17 0.006 240)", border: `1px solid ${selectedStyleIdx === idx ? "oklch(0.75 0.17 65 / 0.6)" : "oklch(0.28 0.008 240)"}` }}>
               <div className="text-sm font-semibold mb-1"
-                style={{ color: selectedStyleIdx === idx ? "oklch(0.75 0.17 65)" : "oklch(0.85 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
-                {tag.type}
-              </div>
-              <div className="text-[10px] line-clamp-2" style={{ color: "oklch(0.50 0.01 240)" }}>
-                {tag.zh.slice(0, 40)}...
-              </div>
+                style={{ color: selectedStyleIdx === idx ? "oklch(0.75 0.17 65)" : "oklch(0.85 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>{tag.type}</div>
+              <div className="text-[10px] line-clamp-2" style={{ color: "oklch(0.50 0.01 240)" }}>{tag.zh.slice(0, 40)}...</div>
             </button>
           ))}
         </div>
-
-        {/* Custom style inputs */}
-        <div className="grid grid-cols-1 gap-3">
+        <div className="space-y-2">
           <div className="space-y-1.5">
-            <Label className="text-xs" style={{ color: "oklch(0.65 0.01 240)" }}>
-              中文风格标签 <span style={{ color: "oklch(0.55 0.01 240)" }}>(可直接编辑)</span>
-            </Label>
-            <Textarea
-              value={projectInfo.styleZh}
-              onChange={e => updateProjectInfo({ styleZh: e.target.value })}
-              placeholder="输入或修改中文风格标签..."
-              rows={3}
-              className="text-xs resize-none"
-              style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)", fontFamily: "'JetBrains Mono', monospace" }}
-            />
+            <Label className="text-xs" style={{ color: "oklch(0.65 0.01 240)" }}>中文风格标签（可编辑）</Label>
+            <Textarea value={projectInfo.styleZh} onChange={e => updateProjectInfo({ styleZh: e.target.value })}
+              placeholder="输入或修改中文风格标签..." rows={2} className="text-xs resize-none"
+              style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)", fontFamily: "'JetBrains Mono', monospace" }} />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs" style={{ color: "oklch(0.65 0.01 240)" }}>
-              English Style Tag <span style={{ color: "oklch(0.55 0.01 240)" }}>(editable)</span>
-            </Label>
-            <Textarea
-              value={projectInfo.styleEn}
-              onChange={e => updateProjectInfo({ styleEn: e.target.value })}
-              placeholder="Enter or edit English style tag..."
-              rows={3}
-              className="text-xs resize-none"
-              style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)", fontFamily: "'JetBrains Mono', monospace" }}
-            />
+            <Label className="text-xs" style={{ color: "oklch(0.65 0.01 240)" }}>English Style Tag (editable)</Label>
+            <Textarea value={projectInfo.styleEn} onChange={e => updateProjectInfo({ styleEn: e.target.value })}
+              placeholder="Enter or edit English style tag..." rows={2} className="text-xs resize-none"
+              style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)", fontFamily: "'JetBrains Mono', monospace" }} />
           </div>
         </div>
       </section>
 
-      {/* Style preview */}
-      {(projectInfo.styleZh || projectInfo.styleEn) && (
+      {/* 1.3 Script Upload */}
+      <section>
+        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"
+          style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
+          <span className="px-2 py-0.5 rounded text-[10px]"
+            style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>1.3</span>
+          剧本上传与解析
+        </h3>
+
+        {/* Upload area */}
+        <div className="mb-3 p-4 rounded flex items-center gap-4 cursor-pointer transition-all"
+          style={{ background: "oklch(0.17 0.006 240)", border: "2px dashed oklch(0.35 0.008 240)" }}
+          onClick={() => fileInputRef.current?.click()}>
+          <Upload className="w-6 h-6 flex-shrink-0" style={{ color: "oklch(0.55 0.01 240)" }} />
+          <div>
+            <p className="text-sm font-medium" style={{ color: "oklch(0.80 0.005 60)" }}>点击上传剧本文件</p>
+            <p className="text-xs" style={{ color: "oklch(0.45 0.008 240)" }}>支持 .txt / .md 纯文本格式，或直接在下方粘贴</p>
+          </div>
+          <input ref={fileInputRef} type="file" accept=".txt,.md" className="hidden" onChange={handleFileUpload} />
+        </div>
+
+        <Textarea value={scriptText} onChange={e => setScriptText(e.target.value)}
+          placeholder={`在此粘贴剧本内容...\n\n支持多集格式，例如：\n第1集 标题\n剧情内容...\n\n第2集 标题\n剧情内容...`}
+          rows={8} className="text-xs resize-none mb-3"
+          style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.85 0.005 60)", fontFamily: "'JetBrains Mono', monospace" }} />
+
+        <Button onClick={handleAnalyze} disabled={isAnalyzing || !scriptText.trim()}
+          className="flex items-center gap-2"
+          style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
+          <Wand2 className="w-4 h-4" />
+          {isAnalyzing ? "解析中..." : "AI 解析剧本"}
+        </Button>
+      </section>
+
+      {/* 1.4 Analysis Results */}
+      {scriptAnalysis.isAnalyzed && scriptAnalysis.episodes.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold mb-2 tracking-widest uppercase"
-            style={{ color: "oklch(0.55 0.01 240)", fontFamily: "'JetBrains Mono', monospace" }}>
-            已选风格标签预览
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"
+            style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
+            <span className="px-2 py-0.5 rounded text-[10px]"
+              style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>1.4</span>
+            解析结果
+            <Badge className="text-[10px] px-2 py-0"
+              style={{ background: "oklch(0.65 0.2 145 / 0.2)", color: "oklch(0.65 0.2 145)", border: "1px solid oklch(0.65 0.2 145 / 0.4)" }}>
+              <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
+              已解析 {scriptAnalysis.episodes.length} 集
+            </Badge>
           </h3>
-          <div className="grid grid-cols-1 gap-2">
-            {projectInfo.styleZh && <PromptBox label="中文风格标签" content={projectInfo.styleZh} lang="zh" />}
-            {projectInfo.styleEn && <PromptBox label="English Style Tag" content={projectInfo.styleEn} lang="en" />}
+
+          {/* Global characters */}
+          {scriptAnalysis.globalCharacters.length > 0 && (
+            <div className="mb-4 p-3 rounded"
+              style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-3.5 h-3.5" style={{ color: "oklch(0.75 0.17 65)" }} />
+                <span className="text-xs font-semibold" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                  全局人物（{scriptAnalysis.globalCharacters.length}）
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {scriptAnalysis.globalCharacters.map(name => (
+                  <span key={name} className="px-2 py-0.5 rounded text-xs"
+                    style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.80 0.005 60)", border: "1px solid oklch(0.30 0.008 240)" }}>
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Episodes */}
+          <div className="space-y-3">
+            {scriptAnalysis.episodes.map(ep => (
+              <div key={ep.id} className="rounded overflow-hidden"
+                style={{ border: "1px solid oklch(0.28 0.008 240)" }}>
+                <div className="flex items-center gap-3 px-4 py-2.5"
+                  style={{ background: "oklch(0.15 0.006 240)", borderBottom: "1px solid oklch(0.28 0.008 240)" }}>
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    EP_{String(ep.number).padStart(2, "0")}
+                  </span>
+                  <Input value={ep.title} onChange={e => updateEpisode(ep.id, { title: e.target.value })}
+                    className="h-6 text-xs flex-1 max-w-[200px]"
+                    style={{ background: "transparent", border: "none", color: "oklch(0.88 0.005 60)", padding: "0" }} />
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <span className="text-[10px] px-2 py-0.5 rounded"
+                      style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.60 0.01 240)" }}>
+                      约 {ep.duration} 分钟
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded"
+                      style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.60 0.01 240)" }}>
+                      ~{ep.duration * 25} 个镜头
+                    </span>
+                  </div>
+                </div>
+                <div className="p-3 grid grid-cols-3 gap-3">
+                  <div>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <Users className="w-3 h-3" style={{ color: "oklch(0.55 0.01 240)" }} />
+                      <span className="text-[10px] font-semibold" style={{ color: "oklch(0.55 0.01 240)" }}>出场人物</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {ep.characters.length > 0 ? ep.characters.map(c => (
+                        <span key={c} className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.70 0.008 240)" }}>{c}</span>
+                      )) : <span className="text-[10px]" style={{ color: "oklch(0.40 0.008 240)" }}>未识别</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <MapPin className="w-3 h-3" style={{ color: "oklch(0.55 0.01 240)" }} />
+                      <span className="text-[10px] font-semibold" style={{ color: "oklch(0.55 0.01 240)" }}>主要场景</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {ep.scenes.map(s => (
+                        <span key={s} className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.70 0.008 240)" }}>{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <Package className="w-3 h-3" style={{ color: "oklch(0.55 0.01 240)" }} />
+                      <span className="text-[10px] font-semibold" style={{ color: "oklch(0.55 0.01 240)" }}>关键道具</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {ep.props.length > 0 ? ep.props.map(p => (
+                        <span key={p} className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.70 0.008 240)" }}>{p}</span>
+                      )) : <span className="text-[10px]" style={{ color: "oklch(0.40 0.008 240)" }}>无</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="px-3 pb-3">
+                  <Textarea value={ep.synopsis} onChange={e => updateEpisode(ep.id, { synopsis: e.target.value })}
+                    rows={2} className="text-[10px] resize-none"
+                    style={{ background: "oklch(0.13 0.005 240)", border: "1px solid oklch(0.25 0.008 240)", color: "oklch(0.65 0.01 240)", fontFamily: "'JetBrains Mono', monospace" }} />
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
 
       {/* Complete button */}
       <div className="flex justify-end pt-2">
-        <Button
-          onClick={handleComplete}
-          disabled={!isReady}
+        <Button onClick={handleComplete}
           className="flex items-center gap-2 px-6"
-          style={{
-            background: isReady ? "oklch(0.75 0.17 65)" : "oklch(0.22 0.006 240)",
-            color: isReady ? "oklch(0.1 0.005 240)" : "oklch(0.45 0.008 240)",
-            fontFamily: "'Space Grotesk', sans-serif",
-            fontWeight: 600,
-          }}
-        >
+          style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
           <CheckCircle2 className="w-4 h-4" />
           完成本阶段，进入资产设计
           <ChevronRight className="w-4 h-4" />

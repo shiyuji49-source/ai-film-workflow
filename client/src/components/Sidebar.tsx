@@ -3,10 +3,10 @@
 import { cn } from "@/lib/utils";
 import { useProject } from "@/contexts/ProjectContext";
 import { WORKFLOW_STEPS } from "@/lib/workflowData";
-import { CheckCircle2, Circle } from "lucide-react";
+import { CheckCircle2, Circle, Film } from "lucide-react";
 
 export default function Sidebar() {
-  const { activePhase, setActivePhase, completedPhases } = useProject();
+  const { activePhase, setActivePhase, completedPhases, projectInfo, scriptAnalysis } = useProject();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col z-40"
@@ -92,6 +92,26 @@ export default function Sidebar() {
           })}
         </ul>
       </nav>
+
+      {/* Project info */}
+      {(projectInfo.title || scriptAnalysis.episodes.length > 0) && (
+        <div className="px-4 py-3 border-t" style={{ borderColor: "oklch(0.25 0.008 240)" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <Film className="w-3 h-3 flex-shrink-0" style={{ color: "oklch(0.75 0.17 65)" }} />
+            <span className="text-xs font-semibold truncate" style={{ color: "oklch(0.85 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
+              {projectInfo.title || "未命名项目"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px]" style={{ color: "oklch(0.45 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+            {projectInfo.type && <span className="px-1.5 py-0.5 rounded" style={{ background: "oklch(0.22 0.006 240)" }}>{projectInfo.type}</span>}
+            {scriptAnalysis.episodes.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded" style={{ background: "oklch(0.22 0.006 240)" }}>
+                {scriptAnalysis.episodes.length} 集
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Progress bar at bottom */}
       <div className="px-5 py-4 border-t" style={{ borderColor: "oklch(0.25 0.008 240)" }}>
