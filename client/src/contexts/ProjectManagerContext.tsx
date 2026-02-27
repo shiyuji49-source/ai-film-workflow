@@ -53,6 +53,7 @@ function defaultProjectInfo(): ProjectInfo {
   return {
     title: "", type: "", episodes: "", platform: "", ratio: "9:16 竖屏",
     audience: "", selling: "", styleZh: "", styleEn: "",
+    styleCategory: "", styleSubtype: "",
   };
 }
 
@@ -74,6 +75,8 @@ function migrateSnapshot(raw: Record<string, unknown>): ProjectSnapshot {
     selling: (rawInfo.selling as string) ?? defaultInfo.selling,
     styleZh: (rawInfo.styleZh as string) ?? defaultInfo.styleZh,
     styleEn: (rawInfo.styleEn as string) ?? defaultInfo.styleEn,
+    styleCategory: (rawInfo.styleCategory as string) ?? defaultInfo.styleCategory,
+    styleSubtype: (rawInfo.styleSubtype as string) ?? defaultInfo.styleSubtype,
   };
   // 修复 Character 缺少 isMecha 字段
   const characters = ((raw.characters as Record<string, unknown>[]) || []).map(c => ({

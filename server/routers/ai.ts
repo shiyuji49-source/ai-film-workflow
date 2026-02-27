@@ -2,7 +2,7 @@ import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { ENV } from "../_core/env";
 
-// ─── Gemini API helper ────────────────────────────────────────────────────────
+// Gemini API helper --------------------------------------------------------
 
 async function callGemini(prompt: string): Promise<string> {
   const apiKey = ENV.geminiApiKey;
@@ -35,11 +35,11 @@ async function callGemini(prompt: string): Promise<string> {
   return text;
 }
 
-// ─── Router ───────────────────────────────────────────────────────────────────
+// Router -------------------------------------------------------------------
 
 export const aiRouter = router({
 
-  // ── 1. 剧本解析 ──────────────────────────────────────────────────────────────
+  // 1. 剧本解析 --------------------------------------------------------------
   analyzeScript: publicProcedure
     .input(z.object({
       scriptText: z.string().min(10).max(200000),
@@ -128,7 +128,7 @@ ${input.scriptText.slice(0, 80000)}
       return parsed;
     }),
 
-  // ── 2. 生成人物 MJ7 提示词 ────────────────────────────────────────────────────
+  // 2. 生成人物 MJ7 提示词 ----------------------------------------------------
   generateCharacterPrompt: publicProcedure
     .input(z.object({
       name: z.string(),
@@ -199,7 +199,7 @@ ${input.scriptText.slice(0, 80000)}
       return parsed;
     }),
 
-  // ── 3. 生成场景/道具 MJ7 提示词 ──────────────────────────────────────────────
+  // 3. 生成场景/道具 MJ7 提示词 ----------------------------------------------
   generateAssetPrompt: publicProcedure
     .input(z.object({
       type: z.enum(["scene", "prop"]),
@@ -265,7 +265,128 @@ ${input.scriptText.slice(0, 80000)}
       return parsed;
     }),
 
-  // ── 4. 验证 Gemini API Key ────────────────────────────────────────────────────
+  // 4. AI 分镜生成 ------------------------------------------------------
+  generateShots: publicProcedure
+    .input(z.object({
+      episodeTitle: z.string(),
+      episodeNumber: z.number(),
+      episodeSynopsis: z.string(),
+      durationMinutes: z.number().min(1).max(30),
+      scenes: z.array(z.string()),
+      characters: z.array(z.string()),
+      styleZh: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { episodeTitle, episodeNumber, episodeSynopsis, durationMinutes, scenes, characters, styleZh } = input;
+      const targetShots = Math.round(durationMinutes * 25);
+
+      const prompt = `你是专业的影视导演和分镜师。请根据以下剧本信息，为第${episodeNumber}集生成完整的分镜表。
+
+【剧本信息】
+集数标题：${episodeTitle}
+剧情简介：${episodeSynopsis}
+单集时长：${durationMinutes}分钟
+主要场景：${scenes.join('、')}
+出场人物：${characters.join('、')}
+整体风格：${styleZh || '3D科幻机甲国漫风格'}
+
+【分镜生成规则】
+1. 总镜头数：${targetShots}个（每分钟25个镜头）
+2. 每个镜头时长：2-5科，高燃场景用短镜头（2-3科），转场和平静场景用长镜头（4-5科）
+3. 镜头类型分配：定场镜头(10%) 逻辑镜头(20%) Action镜头(35%) Reaction镜头(25%) 旁跳镜头(10%)
+4. 情绪节奏：开头平静铺垫，中段逐渐升温，高潮点爆发，结尾余韵收尾
+5. 画面描述：必须具体描述画面内容（人物动作、表情、场景氛围），不能只写“场景名+模板文字”
+6. 每5个镜头左右安排一个旁白（VO）
+7. 每个动作镜头应有具体的音效描述（SFX）
+
+请严格输出以下JSON格式，不要有任何额外说明：
+{
+  "shots": [
+    {
+      "number": 1,
+      "type": "定场镜头|逻辑镜头|Action镜头|Reaction镜头|旁跳镜头",
+      "size": "大远景|远景|全景|中景|中近景|近景|特写|大特写",
+      "movement": "固定|推（Dolly In）|拉（Dolly Out）|跟（Follow）|左移（Truck Left）|右移（Truck Right）|升（Crane Up）|降（Crane Down）|环绕（Orbit）|手持（Handheld）|航拍（Aerial）",
+      "description": "具体的画面内容描述，包含人物动作和场景氛围",
+      "vo": "旁白内容，无则留空",
+      "sfx": "音效描述，无则留空",
+      "duration": 3,
+      "emotion": "情绪关键词",
+      "emotionLevel": 3
+    }
+  ]
+}`;
+
+      const raw = await callGemini(prompt);
+      const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
+      const parsed = JSON.parse(cleaned) as {
+        shots: Array<{
+          number: number; type: string; size: string; movement: string;
+          description: string; vo: string; sfx: string;
+          duration: number; emotion: string; emotionLevel: number;
+        }>;
+      };
+      return parsed;
+    }),
+
+  // 5. Seedance 多镜头提示词生成 -------------------------------------------
+  generateVideoPrompt: publicProcedure
+    .input(z.object({
+      shots: z.array(z.object({
+        number: z.number(),
+        type: z.string(),
+        size: z.string(),
+        movement: z.string(),
+        description: z.string(),
+        vo: z.string(),
+        sfx: z.string(),
+        duration: z.number(),
+        emotion: z.string(),
+        emotionLevel: z.number(),
+      })),
+      totalDuration: z.number(),
+      styleZh: z.string().optional(),
+      styleEn: z.string().optional(),
+      episodeContext: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { shots, totalDuration, styleZh, styleEn, episodeContext } = input;
+
+      const shotsDesc = shots.map(s =>
+        `镜头${s.number}[类型:${s.type} 景别:${s.size} 运动:${s.movement} 时长:${s.duration}s 情绪:${s.emotion}(${s.emotionLevel}/5)]
+  画面: ${s.description}
+  VO: ${s.vo || '无'}
+  SFX: ${s.sfx || '无'}`
+      ).join('\n');
+
+      const prompt = `你是专业的AI影片提示词工程师。请为以下分镜组合生成一段用于即梦Seedance 2.0全能参考模式的多镜头视频提示词。
+
+【分镜信息】
+${shotsDesc}
+
+【视频规格】
+- 片段时长：${totalDuration}秒（${shots.length}个镜头）
+- 整体风格：${styleZh || '3D科幻机甲国漫风格'}
+- 剧情背景：${episodeContext || ''}
+
+【Seedance提示词规则】
+1. 按镜头顺序描述，每个镜头明确标注景别、运动方式、时长
+2. 画面描述具体生动，包含人物动作、表情、光效、场景氛围
+3. 旁白（VO）和音效（SFX）直接写入提示词，格式：[VO: "旁白内容"] [SFX: 音效描述]
+4. 不要出现@符号
+5. 不要引用具体影视作品名称，用风格描述词代替
+6. 提示词全程用中文撰写，不要在提示词中加入英文
+7. 整体语调要具有电影感和沉浸感
+
+请直接输出提示词文本，不要有任何额外说明或JSON包裹。`;
+
+      const raw = await callGemini(prompt);
+      // 清理可能的markdown代码块
+      const cleaned = raw.replace(/^```[\w]*\s*/m, "").replace(/```\s*$/m, "").trim();
+      return { prompt: cleaned };
+    }),
+
+  // 6. 验证 Gemini API Key --------------------------------------------
   testConnection: publicProcedure
     .mutation(async () => {
       const result = await callGemini(JSON.stringify({ test: true }) + '\n请回复：{"status":"ok"}');

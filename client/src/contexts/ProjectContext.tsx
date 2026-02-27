@@ -15,6 +15,8 @@ export interface ProjectInfo {
   selling: string;
   styleZh: string;
   styleEn: string;
+  styleCategory: string;  // 大类 ID: "2D" | "3D" | "CG" | "live"
+  styleSubtype: string;   // 小类 ID，可为空
 }
 
 export interface Episode {
@@ -126,6 +128,7 @@ interface ProjectContextType {
   updateShot: (id: string, data: Partial<Shot>) => void;
   removeShot: (id: string) => void;
   autoGenerateShots: (episodeId: string) => void;
+  addShotsFromAI: (episodeId: string, shots: Omit<Shot, 'id' | 'episodeId'>[]) => void;
 
   addVideoSegment: (episodeId: string) => void;
   updateVideoSegment: (id: string, data: Partial<VideoSegment>) => void;
@@ -409,7 +412,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
   // Local state mirrors the active snapshot; syncs to manager on every change
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>(
-    activeSnap?.projectInfo ?? { title: "", type: "", episodes: "", platform: "", ratio: "9:16 竖屏", audience: "", selling: "", styleZh: "", styleEn: "" }
+    activeSnap?.projectInfo ?? { title: "", type: "", episodes: "", platform: "", ratio: "9:16 竖屏", audience: "", selling: "", styleZh: "", styleEn: "", styleCategory: "", styleSubtype: "" }
   );
   const [scriptText, setScriptTextState] = useState(activeSnap?.scriptText ?? "");
   const [scriptAnalysis, setScriptAnalysis] = useState<ScriptAnalysis>(
@@ -661,6 +664,14 @@ ${styleTagEn}`;
     setShots(prev => prev.filter(s => s.id !== id));
   }, []);
 
+  const addShotsFromAI = useCallback((episodeId: string, newShots: Omit<Shot, 'id' | 'episodeId'>[]) => {
+    setShots(prev => {
+      const others = prev.filter(s => s.episodeId !== episodeId);
+      const mapped = newShots.map(s => ({ ...s, id: nanoid(), episodeId }));
+      return [...others, ...mapped];
+    });
+  }, []);
+
   const autoGenerateShots = useCallback((episodeId: string) => {
     const episode = scriptAnalysis.episodes.find(e => e.id === episodeId);
     if (!episode) return;
@@ -731,7 +742,7 @@ ${styleTagEn}`;
       setScriptText, analyzeScript, analyzeScriptWithAI, updateEpisode,
       addCharacter, updateCharacter, removeCharacter, generateCharacterPrompt,
       addEpisodeAsset, updateEpisodeAsset, removeEpisodeAsset, generateAssetPromptMJ,
-      addShot, updateShot, removeShot, autoGenerateShots,
+      addShot, updateShot, removeShot, autoGenerateShots, addShotsFromAI,
       addVideoSegment, updateVideoSegment, removeVideoSegment, autoGenerateSegments, generateSegmentPrompt,
       markPhaseComplete,
     }}>

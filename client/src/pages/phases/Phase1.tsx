@@ -1,6 +1,6 @@
 // DESIGN: "导演手册" 工业风暗色系 — Phase 1: Project Definition + Script Upload
 import { useProject } from "@/contexts/ProjectContext";
-import { STYLE_TAGS } from "@/lib/workflowData";
+import { STYLE_CATEGORIES, STYLE_SUBTYPES, getStyleDesc } from "@/lib/workflowData";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -16,14 +16,22 @@ import { trpc } from "@/lib/trpc";
 export default function Phase1() {
   const { projectInfo, updateProjectInfo, scriptText, setScriptText,
     scriptAnalysis, analyzeScript, analyzeScriptWithAI, updateEpisode, markPhaseComplete, setActivePhase } = useProject();
-  const [selectedStyleIdx, setSelectedStyleIdx] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>(projectInfo.styleCategory || "");
+  const [selectedSubtype, setSelectedSubtype] = useState<string>(projectInfo.styleSubtype || "");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSelectStyle = (idx: number) => {
-    setSelectedStyleIdx(idx);
-    const tag = STYLE_TAGS[idx];
-    updateProjectInfo({ styleZh: tag.zh, styleEn: tag.en });
+  const handleSelectCategory = (catId: string) => {
+    setSelectedCategory(catId);
+    setSelectedSubtype("");
+    const desc = getStyleDesc(catId);
+    updateProjectInfo({ styleCategory: catId, styleSubtype: "", styleZh: desc.zh, styleEn: desc.en });
+  };
+
+  const handleSelectSubtype = (subtypeId: string) => {
+    setSelectedSubtype(subtypeId);
+    const desc = getStyleDesc(selectedCategory, subtypeId);
+    updateProjectInfo({ styleSubtype: subtypeId, styleZh: desc.zh, styleEn: desc.en });
   };
 
   const [isDragging, setIsDragging] = useState(false);
@@ -180,17 +188,36 @@ export default function Phase1() {
             禁止引用具体作品名称
           </Badge>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
-          {STYLE_TAGS.map((tag, idx) => (
-            <button key={tag.type} onClick={() => handleSelectStyle(idx)}
-              className="text-left p-3 rounded transition-all duration-200"
-              style={{ background: selectedStyleIdx === idx ? "oklch(0.75 0.17 65 / 0.12)" : "oklch(0.17 0.006 240)", border: `1px solid ${selectedStyleIdx === idx ? "oklch(0.75 0.17 65 / 0.6)" : "oklch(0.28 0.008 240)"}` }}>
-              <div className="text-sm font-semibold mb-1"
-                style={{ color: selectedStyleIdx === idx ? "oklch(0.75 0.17 65)" : "oklch(0.85 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>{tag.type}</div>
-              <div className="text-[10px] line-clamp-2" style={{ color: "oklch(0.50 0.01 240)" }}>{tag.zh.slice(0, 40)}...</div>
-            </button>
-          ))}
+        {/* 第一级：大类选择 */}
+        <div className="mb-3">
+          <p className="text-[10px] mb-2" style={{ color: "oklch(0.55 0.01 240)" }}>Step 1 — 选择大类</p>
+          <div className="grid grid-cols-4 gap-2">
+            {STYLE_CATEGORIES.map(cat => (
+              <button key={cat.id} onClick={() => handleSelectCategory(cat.id)}
+                className="text-center p-3 rounded transition-all duration-200"
+                style={{ background: selectedCategory === cat.id ? "oklch(0.75 0.17 65 / 0.15)" : "oklch(0.17 0.006 240)", border: `1px solid ${selectedCategory === cat.id ? "oklch(0.75 0.17 65 / 0.7)" : "oklch(0.28 0.008 240)"}` }}>
+                <div className="text-sm font-bold mb-0.5"
+                  style={{ color: selectedCategory === cat.id ? "oklch(0.75 0.17 65)" : "oklch(0.85 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>{cat.label}</div>
+                <div className="text-[10px]" style={{ color: "oklch(0.50 0.01 240)" }}>{cat.desc}</div>
+              </button>
+            ))}
+          </div>
         </div>
+        {/* 第二级：小类选择（可选） */}
+        {selectedCategory && (
+          <div className="mb-3">
+            <p className="text-[10px] mb-2" style={{ color: "oklch(0.55 0.01 240)" }}>Step 2 — 选择小类（可不选）</p>
+            <div className="flex flex-wrap gap-2">
+              {STYLE_SUBTYPES.filter(s => s.parentId === selectedCategory).map(sub => (
+                <button key={sub.id} onClick={() => handleSelectSubtype(sub.id)}
+                  className="px-3 py-1.5 rounded text-xs transition-all duration-200"
+                  style={{ background: selectedSubtype === sub.id ? "oklch(0.75 0.17 65 / 0.2)" : "oklch(0.17 0.006 240)", border: `1px solid ${selectedSubtype === sub.id ? "oklch(0.75 0.17 65 / 0.8)" : "oklch(0.28 0.008 240)"}`, color: selectedSubtype === sub.id ? "oklch(0.75 0.17 65)" : "oklch(0.75 0.008 240)" }}>
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="space-y-2">
           <div className="space-y-1.5">
             <Label className="text-xs" style={{ color: "oklch(0.65 0.01 240)" }}>中文风格标签（可编辑）</Label>

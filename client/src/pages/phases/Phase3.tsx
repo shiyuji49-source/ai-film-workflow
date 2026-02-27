@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, ChevronRight, Plus, Trash2, Wand2, BarChart2, List } from "lucide-react";
+import { CheckCircle2, ChevronRight, Plus, Trash2, Wand2, BarChart2, List, Loader2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 // ─── Emotion Timeline Component ───────────────────────────────────────────────
 function EmotionTimeline({ shots }: { shots: Array<{ number: number; emotion: string; emotionLevel: number; duration: number; type: string }> }) {
@@ -205,21 +206,41 @@ function ShotRow({ shot, onUpdate, onRemove }: {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function Phase3() {
-  const { scriptAnalysis, shots, addShot, updateShot, removeShot,
-    autoGenerateShots, markPhaseComplete, setActivePhase } = useProject();
+  const { scriptAnalysis, characters, shots, addShot, updateShot, removeShot,
+    addShotsFromAI, markPhaseComplete, setActivePhase, projectInfo } = useProject();
   const [activeEpTab, setActiveEpTab] = useState(
     scriptAnalysis.episodes.length > 0 ? scriptAnalysis.episodes[0].id : ""
   );
   const [viewMode, setViewMode] = useState<"list" | "timeline">("list");
+  const [generatingEp, setGeneratingEp] = useState<string | null>(null);
+
+  const generateShotsMutation = trpc.ai.generateShots.useMutation();
 
   const episodes = scriptAnalysis.episodes;
   const activeEp = episodes.find(e => e.id === activeEpTab);
   const epShots = useMemo(() => shots.filter(s => s.episodeId === activeEpTab), [shots, activeEpTab]);
 
-  const handleAutoGenerate = () => {
-    if (!activeEpTab) { toast.error("请先选择集数"); return; }
-    autoGenerateShots(activeEpTab);
-    toast.success(`已为 ${activeEp?.title} 自动生成约 ${(activeEp?.duration || 1) * 25} 个分镜`);
+  const handleAutoGenerate = async () => {
+    if (!activeEpTab || !activeEp) { toast.error("请先选择集数"); return; }
+    setGeneratingEp(activeEpTab);
+    try {
+      const result = await generateShotsMutation.mutateAsync({
+        episodeTitle: activeEp.title,
+        episodeNumber: activeEp.number,
+        episodeSynopsis: activeEp.synopsis,
+        durationMinutes: activeEp.duration,
+        scenes: activeEp.scenes as string[],
+        characters: characters.map(c => c.name),
+        styleZh: projectInfo.styleZh || projectInfo.styleCategory || "3D科幻机甲国漫风格",
+      });
+      addShotsFromAI(activeEpTab, result.shots);
+      toast.success(`已为「${activeEp.title}」生成 ${result.shots.length} 个分镜`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "未知错误";
+      toast.error(`AI 分镜生成失败：${msg}`);
+    } finally {
+      setGeneratingEp(null);
+    }
   };
 
   const handleComplete = () => {
@@ -293,11 +314,14 @@ export default function Phase3() {
                     </span>
                   </div>
                   <div className="flex gap-2">
-                    <Button onClick={handleAutoGenerate} size="sm"
+                    <Button onClick={handleAutoGenerate} size="sm" disabled={generatingEp === ep.id}
                       className="flex items-center gap-1.5 text-xs h-7"
                       style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
-                      <Wand2 className="w-3 h-3" />
-                      AI 自动生成分镜
+                      {generatingEp === ep.id ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" />AI 生成中…</>
+                      ) : (
+                        <><Wand2 className="w-3 h-3" />AI 自动生成分镜</>
+                      )}
                     </Button>
                     <Button onClick={() => addShot(ep.id)} size="sm" variant="outline"
                       className="flex items-center gap-1.5 text-xs h-7"
