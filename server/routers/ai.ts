@@ -4,7 +4,7 @@ import { ENV } from "../_core/env";
 
 // Gemini API helper --------------------------------------------------------
 
-async function callGemini(prompt: string): Promise<string> {
+async function callGemini(prompt: string, maxOutputTokens = 65536): Promise<string> {
   const apiKey = ENV.geminiApiKey;
   if (!apiKey) throw new Error("GEMINI_API_KEY 未配置");
 
@@ -13,7 +13,7 @@ async function callGemini(prompt: string): Promise<string> {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 8192,
+      maxOutputTokens,
     },
   };
 
@@ -29,9 +29,20 @@ async function callGemini(prompt: string): Promise<string> {
   }
 
   const data = await res.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+      finishReason?: string;
+    }>;
   };
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+  const candidate = data.candidates?.[0];
+  const finishReason = candidate?.finishReason;
+  // MAX_TOKENS means output was cut off — the JSON will be incomplete
+  if (finishReason === "MAX_TOKENS") {
+    throw new Error("AI 输出超出长度限制，请减少单次生成的镜头数量（建议每集时长不超过 5 分钟）");
+  }
+
+  const text = candidate?.content?.parts?.[0]?.text ?? "";
   return text;
 }
 
@@ -111,7 +122,7 @@ ${input.scriptText.slice(0, 80000)}
   ]
 }`;
 
-      const raw = await callGemini(prompt);
+      const raw = await callGemini(prompt, 65536);
       // 清理 markdown 代码块
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as {
@@ -278,9 +289,10 @@ ${input.scriptText.slice(0, 80000)}
     }))
     .mutation(async ({ input }) => {
       const { episodeTitle, episodeNumber, episodeSynopsis, durationMinutes, scenes, characters, styleZh } = input;
-      const targetShots = Math.round(durationMinutes * 25);
+      // Cap at 60 shots per request to avoid token overflow (~60 shots ≈ 30k tokens output)
+      const targetShots = Math.min(Math.round(durationMinutes * 25), 60);
 
-      const prompt = `你是专业的影视导演和分镜师。请根据以下剧本信息，为第${episodeNumber}集生成完整的分镜表。
+      const prompt = `你是专业的影视导演和分镜师。请根据以下剧本信息，为第${episodeNumber}集生成分镜表。
 
 【剧本信息】
 集数标题：${episodeTitle}
@@ -291,11 +303,11 @@ ${input.scriptText.slice(0, 80000)}
 整体风格：${styleZh || '3D科幻机甲国漫风格'}
 
 【分镜生成规则】
-1. 总镜头数：${targetShots}个（每分钟25个镜头）
+1. 总镜头数：${targetShots}个
 2. 每个镜头时长：2-5科，高燃场景用短镜头（2-3科），转场和平静场景用长镜头（4-5科）
 3. 镜头类型分配：定场镜头(10%) 逻辑镜头(20%) Action镜头(35%) Reaction镜头(25%) 旁跳镜头(10%)
 4. 情绪节奏：开头平静铺垫，中段逐渐升温，高潮点爆发，结尾余韵收尾
-5. 画面描述：必须具体描述画面内容（人物动作、表情、场景氛围），不能只写“场景名+模板文字”
+5. 画面描述：必须具体描述画面内容（人物动作、表情、场景氛围），不能只写"场景名+模板文字"
 6. 每5个镜头左右安排一个旁白（VO）
 7. 每个动作镜头应有具体的音效描述（SFX）
 
@@ -317,7 +329,7 @@ ${input.scriptText.slice(0, 80000)}
   ]
 }`;
 
-      const raw = await callGemini(prompt);
+      const raw = await callGemini(prompt, 65536);
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as {
         shots: Array<{

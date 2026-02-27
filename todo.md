@@ -21,6 +21,10 @@
 - [x] 修复 Phase3 中 characters 引用错误
 - [x] 移除 Phase4 中未使用的 STYLE_TAGS 导入
 
+## 已修复的错误
+
+- [x] 修复 Gemini API 输出截断导致 JSON 解析失败（Unterminated string in JSON）：将 maxOutputTokens 从 8192 提升至 65536，添加 finishReason=MAX_TOKENS 检测，限制分镜生成每次最多 60 个镜头
+
 ## 待完成功能
 
 - [ ] Phase1 剧本解析进度条（实时步骤显示）
