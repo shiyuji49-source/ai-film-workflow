@@ -28,9 +28,28 @@ export const authRouter = router({
       identifier: z.string().min(1, "请输入手机号或邮箱"),
       password: z.string().min(6, "密码至少6位"),
       name: z.string().optional(),
+      inviteCode: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const identifierType = detectIdentifierType(input.identifier);
+
+      // 验证邀请码（如果系统开启了邀请码限制）
+      const REQUIRE_INVITE = process.env.REQUIRE_INVITE_CODE === "true";
+      if (REQUIRE_INVITE) {
+        if (!input.inviteCode) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "注册需要邀请码" });
+        }
+        const inv = await db.getInviteCodeByCode(input.inviteCode.trim().toUpperCase());
+        if (!inv) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "邀请码无效" });
+        }
+        if (inv.useCount >= inv.maxUses) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "该邀请码已被使用" });
+        }
+        if (inv.expiresAt && Date.now() > inv.expiresAt) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "邀请码已过期" });
+        }
+      }
 
       // 检查是否已注册
       const existing = await db.getUserByIdentifier(input.identifier);
@@ -45,6 +64,11 @@ export const authRouter = router({
         passwordHash,
         name: input.name,
       });
+
+      // 标记邀请码已使用
+      if (REQUIRE_INVITE && input.inviteCode) {
+        await db.useInviteCode(input.inviteCode.trim().toUpperCase(), user.id);
+      }
 
       // 自动登录：创建 session
       const sessionToken = await sdk.createSessionToken(String(user.id), {

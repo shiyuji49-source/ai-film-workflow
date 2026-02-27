@@ -9,12 +9,14 @@ import { ProjectManagerProvider } from "./contexts/ProjectManagerContext";
 import { ProjectProvider } from "./contexts/ProjectContext";
 import Home from "./pages/Home";
 import AdminPage from "./pages/AdminPage";
+import CreditsPage from "./pages/CreditsPage";
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/admin"} component={AdminPage} />
+      <Route path={"/credits"} component={CreditsPage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

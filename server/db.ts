@@ -1,6 +1,6 @@
 import { eq, and, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { users, projects, creditLogs, type User, type InsertUser, type Project, type InsertProject, type InsertCreditLog } from "../drizzle/schema";
+import { users, projects, creditLogs, inviteCodes, type User, type InsertUser, type Project, type InsertProject, type InsertCreditLog } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -312,4 +312,62 @@ export async function adminGetOverview() {
   }
 
   return { totalUsers, totalCreditsGranted, totalCreditsConsumed, totalAiCalls };
+}
+
+// ─── 邀请码 ──────────────────────────────────────────────────────────────────
+
+export async function createInviteCode(data: {
+  code: string;
+  createdBy: number;
+  maxUses?: number;
+  expiresAt?: number;
+  note?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("数据库不可用");
+  await db.insert(inviteCodes).values({
+    code: data.code,
+    createdBy: data.createdBy,
+    maxUses: data.maxUses ?? 1,
+    expiresAt: data.expiresAt ?? null,
+    note: data.note ?? null,
+    createdAt: Date.now(),
+  });
+}
+
+export async function getInviteCodeByCode(code: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(inviteCodes).where(eq(inviteCodes.code, code)).limit(1);
+  return result[0];
+}
+
+export async function useInviteCode(code: string, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const inv = await getInviteCodeByCode(code);
+  if (!inv) return false;
+  if (inv.useCount >= inv.maxUses) return false;
+  if (inv.expiresAt && Date.now() > inv.expiresAt) return false;
+
+  await db.update(inviteCodes)
+    .set({
+      useCount: inv.useCount + 1,
+      usedBy: userId,
+      usedAt: Date.now(),
+    })
+    .where(eq(inviteCodes.code, code));
+  return true;
+}
+
+export async function getAllInviteCodes() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(inviteCodes).orderBy(desc(inviteCodes.createdAt));
+}
+
+export async function deleteInviteCode(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("数据库不可用");
+  await db.delete(inviteCodes).where(eq(inviteCodes.id, id));
 }

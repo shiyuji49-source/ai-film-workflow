@@ -16,6 +16,7 @@ import {
 import { useAuth } from "@/_core/hooks/useAuth";
 import CreditsShopDialog from "@/components/CreditsShopDialog";
 import { ShoppingCart } from "lucide-react";
+import { Link } from "wouter";
 
 const PHASE_LABELS: Record<string, string> = {
   phase1: "项目定义",
@@ -142,10 +143,12 @@ export default function Dashboard({ onOpenProject }: DashboardProps) {
             {/* Credits + Shop */}
             {user && (
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: "8px 0 0 8px", background: "oklch(0.18 0.007 240)", border: "1px solid oklch(0.26 0.008 240)", borderRight: "none", fontSize: 12, fontWeight: 700, color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
-                  <Coins size={12} />
-                  {user.credits?.toLocaleString() ?? "—"} 积分
-                </div>
+                <Link href="/credits">
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: "8px 0 0 8px", background: "oklch(0.18 0.007 240)", border: "1px solid oklch(0.26 0.008 240)", borderRight: "none", fontSize: 12, fontWeight: 700, color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", textDecoration: "none" }}>
+                    <Coins size={12} />
+                    {user.credits?.toLocaleString() ?? "—"} 积分
+                  </div>
+                </Link>
                 <button
                   onClick={() => setShowShop(true)}
                   style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: "0 8px 8px 0", background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.4)", fontSize: 11, fontWeight: 600, color: "oklch(0.75 0.17 65)", cursor: "pointer", fontFamily: "'Space Grotesk', sans-serif" }}

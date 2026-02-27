@@ -2,7 +2,7 @@
 // 工业风暗色系，与整体设计保持一致
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clapperboard, Eye, EyeOff, Loader2, User, Lock, Phone } from "lucide-react";
+import { Clapperboard, Eye, EyeOff, Loader2, User, Lock, Phone, Key } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -17,6 +17,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: () => {
@@ -55,7 +56,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
         toast.error("密码至少需要6位");
         return;
       }
-      registerMutation.mutate({ identifier: identifier.trim(), password, name: name.trim() || undefined });
+      registerMutation.mutate({ identifier: identifier.trim(), password, name: name.trim() || undefined, inviteCode: inviteCode.trim().toUpperCase() || undefined });
     } else {
       loginMutation.mutate({ identifier: identifier.trim(), password });
     }
@@ -226,6 +227,42 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
                 </button>
               </div>
             </div>
+
+            {/* Invite code (register only) */}
+            <AnimatePresence mode="wait">
+              {mode === "register" && (
+                <motion.div
+                  key="invite"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <label className="block text-xs mb-1.5" style={{ color: MUTED, fontFamily: "'JetBrains Mono', monospace" }}>
+                    邀请码（内测阶段可能需要）
+                  </label>
+                  <div className="relative">
+                    <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
+                    <input
+                      type="text"
+                      value={inviteCode}
+                      onChange={e => setInviteCode(e.target.value.toUpperCase())}
+                      placeholder="输入邀请码（如有）"
+                      className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm outline-none transition-all uppercase"
+                      style={{
+                        background: INPUT_BG,
+                        border: `1px solid ${BORDER}`,
+                        color: GOLD,
+                        fontFamily: "'JetBrains Mono', monospace",
+                        letterSpacing: "0.1em",
+                      }}
+                      onFocus={e => (e.target.style.borderColor = GOLD)}
+                      onBlur={e => (e.target.style.borderColor = BORDER)}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Confirm password (register only) */}
             <AnimatePresence mode="wait">

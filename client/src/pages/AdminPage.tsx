@@ -60,13 +60,18 @@ export default function AdminPage() {
   const [grantDialog, setGrantDialog] = useState<{ open: boolean; userId: number; name: string; currentCredits: number } | null>(null);
   const [grantAmount, setGrantAmount] = useState("1000");
   const [grantNote, setGrantNote] = useState("");
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "stats">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "stats" | "invites">("overview");
+  const [createInviteCount, setCreateInviteCount] = useState("5");
+  const [createInviteMaxUses, setCreateInviteMaxUses] = useState("1");
+  const [createInviteNote, setCreateInviteNote] = useState("");
+  const [newCodes, setNewCodes] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchGrantDialog, setBatchGrantDialog] = useState(false);
   const [batchGrantAmount, setBatchGrantAmount] = useState("1000");
   const [batchGrantNote, setBatchGrantNote] = useState("");
 
   const { data: overview, refetch: refetchOverview } = trpc.admin.getOverview.useQuery(undefined, { enabled: !!user && user.role === "admin" });
+  const { data: inviteCodes, refetch: refetchInvites } = trpc.admin.getInviteCodes.useQuery(undefined, { enabled: !!user && user.role === "admin" });
   const { data: usersData, refetch: refetchUsers } = trpc.admin.getUsers.useQuery({ page, pageSize: 20 }, { enabled: !!user && user.role === "admin" });
   const { data: aiStats } = trpc.admin.getAiStats.useQuery(undefined, { enabled: !!user && user.role === "admin" });
   const { data: dailyStats } = trpc.admin.getDailyStats.useQuery(undefined, { enabled: !!user && user.role === "admin" });
@@ -151,10 +156,28 @@ export default function AdminPage() {
     );
   }
 
+  const createInviteMutation = trpc.admin.createInviteCode.useMutation({
+    onSuccess: (data) => {
+      toast.success(`成功生成 ${data.codes.length} 个邀请码`);
+      setNewCodes(data.codes);
+      refetchInvites();
+    },
+    onError: (err) => toast.error(`生成失败：${err.message}`),
+  });
+
+  const deleteInviteMutation = trpc.admin.deleteInviteCode.useMutation({
+    onSuccess: () => {
+      toast.success("删除成功");
+      refetchInvites();
+    },
+    onError: (err) => toast.error(`删除失败：${err.message}`),
+  });
+
   const tabs = [
     { id: "overview", label: "概览", icon: TrendingUp },
     { id: "users", label: "用户管理", icon: Users },
     { id: "stats", label: "AI 使用统计", icon: Zap },
+    { id: "invites", label: "邀请码", icon: Plus },
   ] as const;
 
   return (
@@ -507,6 +530,156 @@ export default function AdminPage() {
         )}
 
         {/* ── AI 使用统计 Tab ── */}
+        {activeTab === "invites" && (
+          <div className="space-y-6">
+            {/* 生成邀请码表单 */}
+            <Card style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.22 0.006 240)" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                  生成邀请码
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs mb-1 block" style={{ color: "oklch(0.55 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>数量</label>
+                    <Input
+                      type="number" min={1} max={100}
+                      value={createInviteCount}
+                      onChange={(e) => setCreateInviteCount(e.target.value)}
+                      className="text-sm"
+                      style={{ background: "oklch(0.20 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs mb-1 block" style={{ color: "oklch(0.55 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>每码可用次数</label>
+                    <Input
+                      type="number" min={1} max={100}
+                      value={createInviteMaxUses}
+                      onChange={(e) => setCreateInviteMaxUses(e.target.value)}
+                      className="text-sm"
+                      style={{ background: "oklch(0.20 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs mb-1 block" style={{ color: "oklch(0.55 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>备注（可选）</label>
+                    <Input
+                      value={createInviteNote}
+                      onChange={(e) => setCreateInviteNote(e.target.value)}
+                      placeholder="如：内测小伙伴"
+                      className="text-sm"
+                      style={{ background: "oklch(0.20 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }}
+                    />
+                  </div>
+                </div>
+                <Button
+                  disabled={createInviteMutation.isPending}
+                  onClick={() => {
+                    setNewCodes([]);
+                    createInviteMutation.mutate({
+                      count: Number(createInviteCount),
+                      maxUses: Number(createInviteMaxUses),
+                      note: createInviteNote || undefined,
+                    });
+                  }}
+                  style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.13 0.005 240)" }}
+                >
+                  {createInviteMutation.isPending ? "生成中..." : `生成 ${createInviteCount} 个邀请码`}
+                </Button>
+                {newCodes.length > 0 && (
+                  <div className="mt-3 p-3 rounded-lg" style={{ background: "oklch(0.20 0.008 65 / 0.3)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>
+                    <div className="text-xs mb-2" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>新生成的邀请码：</div>
+                    <div className="flex flex-wrap gap-2">
+                      {newCodes.map(code => (
+                        <button
+                          key={code}
+                          onClick={() => { navigator.clipboard.writeText(code); toast.success(`已复制：${code}`); }}
+                          className="px-3 py-1 rounded text-xs font-mono font-bold transition-colors hover:opacity-80"
+                          style={{ background: "oklch(0.75 0.17 65 / 0.2)", color: "oklch(0.75 0.17 65)", border: "1px solid oklch(0.75 0.17 65 / 0.4)" }}
+                        >
+                          {code}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-xs mt-2" style={{ color: "oklch(0.50 0.008 240)" }}>点击邀请码可复制到剪贴板</div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 邀请码列表 */}
+            <Card style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.22 0.006 240)" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center justify-between" style={{ color: "oklch(0.70 0.008 240)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                  <span>邀请码列表（共 {inviteCodes?.length ?? 0} 个）</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {!inviteCodes || inviteCodes.length === 0 ? (
+                  <div className="py-12 text-center text-sm" style={{ color: "oklch(0.45 0.008 240)" }}>暂无邀请码</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow style={{ borderColor: "oklch(0.22 0.006 240)" }}>
+                        {["邀请码", "使用次数", "最大次数", "备注", "创建时间", "操作"].map(h => (
+                          <TableHead key={h} className="text-xs" style={{ color: "oklch(0.50 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>{h}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {inviteCodes.map(inv => {
+                        const isUsed = inv.useCount >= inv.maxUses;
+                        const isExpired = inv.expiresAt ? Date.now() > inv.expiresAt : false;
+                        return (
+                          <TableRow key={inv.id} style={{ borderColor: "oklch(0.20 0.006 240)", opacity: isUsed || isExpired ? 0.5 : 1 }}>
+                            <TableCell>
+                              <button
+                                onClick={() => { navigator.clipboard.writeText(inv.code); toast.success(`已复制：${inv.code}`); }}
+                                className="font-mono font-bold text-sm hover:opacity-80 transition-opacity"
+                                style={{ color: isUsed ? "oklch(0.45 0.008 240)" : "oklch(0.75 0.17 65)" }}
+                              >
+                                {inv.code}
+                              </button>
+                              {isUsed && <Badge className="ml-2 text-[10px]" style={{ background: "oklch(0.30 0.008 240)", color: "oklch(0.55 0.008 240)" }}>已用尽</Badge>}
+                              {isExpired && <Badge className="ml-2 text-[10px]" style={{ background: "oklch(0.30 0.008 240)", color: "oklch(0.55 0.008 240)" }}>已过期</Badge>}
+                            </TableCell>
+                            <TableCell className="text-sm font-mono" style={{ color: "oklch(0.70 0.008 240)" }}>{inv.useCount}</TableCell>
+                            <TableCell className="text-sm font-mono" style={{ color: "oklch(0.70 0.008 240)" }}>{inv.maxUses}</TableCell>
+                            <TableCell className="text-xs" style={{ color: "oklch(0.55 0.008 240)" }}>{inv.note ?? "—"}</TableCell>
+                            <TableCell className="text-xs" style={{ color: "oklch(0.45 0.008 240)" }}>
+                              {new Date(inv.createdAt).toLocaleDateString("zh-CN")}
+                            </TableCell>
+                            <TableCell>
+                              <button
+                                onClick={() => deleteInviteMutation.mutate({ id: inv.id })}
+                                className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
+                                style={{ color: "oklch(0.60 0.15 30)", border: "1px solid oklch(0.60 0.15 30 / 0.4)", background: "transparent" }}
+                              >
+                                删除
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 邀请码开关说明 */}
+            <Card style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.22 0.006 240)" }}>
+              <CardContent className="pt-4">
+                <div className="text-xs space-y-1" style={{ color: "oklch(0.50 0.008 240)" }}>
+                  <p>ℹ️ 邀请码开关：在服务器环境变量中设置 <code className="px-1 py-0.5 rounded" style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.75 0.17 65)" }}>REQUIRE_INVITE_CODE=true</code> 即可开启邀请码注册限制。</p>
+                  <p>• 开启后，所有新用户注册必须提供有效邀请码才能完成注册。</p>
+                  <p>• 未开启时，邀请码输入框仍会显示（如果填写了就会记录），但不强制验证。</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {activeTab === "stats" && (
           <div className="space-y-6">
             {/* 操作类型柱状图 */}

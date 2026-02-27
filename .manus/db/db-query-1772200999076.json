@@ -1,0 +1,9 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS `invite_codes` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `code` varchar(32) NOT NULL,\n  `created_by` int NOT NULL DEFAULT 0,\n  `used_by` int DEFAULT NULL,\n  `used_at` bigint DEFAULT NULL,\n  `expires_at` bigint DEFAULT NULL,\n  `max_uses` int NOT NULL DEFAULT 1,\n  `use_count` int NOT NULL DEFAULT 0,\n  `note` varchar(255) DEFAULT NULL,\n  `created_at` bigint NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `invite_codes_code_unique` (`code`)\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute \nCREATE TABLE IF NOT EXISTS `invite_codes` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `code` varchar(32) NOT NULL,\n  `created_by` int NOT NULL DEFAULT 0,\n  `used_by` int DEFAULT NULL,\n  `used_at` bigint DEFAULT NULL,\n  `expires_at` bigint DEFAULT NULL,\n  `max_uses` int NOT NULL DEFAULT 1,\n  `use_count` int NOT NULL DEFAULT 0,\n  `note` varchar(255) DEFAULT NULL,\n  `created_at` bigint NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `invite_codes_code_unique` (`code`)\n);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1637
+}

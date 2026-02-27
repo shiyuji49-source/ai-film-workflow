@@ -70,6 +70,26 @@ export const creditLogs = mysqlTable("creditLogs", {
 export type CreditLog = typeof creditLogs.$inferSelect;
 export type InsertCreditLog = typeof creditLogs.$inferInsert;
 
+// ─── 邀请码表 ──────────────────────────────────────────────────────────────────
+export const inviteCodes = mysqlTable("invite_codes", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  /** 创建者（管理员 userId，0 表示系统生成） */
+  createdBy: int("created_by").notNull().default(0),
+  /** 使用者 userId */
+  usedBy: int("used_by"),
+  usedAt: bigint("used_at", { mode: "number" }),
+  /** 过期时间（null 表示永不过期） */
+  expiresAt: bigint("expires_at", { mode: "number" }),
+  /** 最大使用次数（默认 1） */
+  maxUses: int("max_uses").notNull().default(1),
+  useCount: int("use_count").notNull().default(0),
+  note: varchar("note", { length: 255 }),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+export type InviteCode = typeof inviteCodes.$inferSelect;
+
 // ─── 订单表（Stripe 支付记录）────────────────────────────────────────────────
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),

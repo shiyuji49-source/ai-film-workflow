@@ -96,4 +96,54 @@ export const adminRouter = router({
     .query(async ({ input }) => {
       return db.getCreditLogs(input.userId, input.limit);
     }),
+
+  // ─── 邀请码管理 ────────────────────────────────────────────────────────
+
+  /** 获取所有邀请码 */
+  getInviteCodes: adminProcedure
+    .query(async () => {
+      return db.getAllInviteCodes();
+    }),
+
+  /** 生成邀请码 */
+  createInviteCode: adminProcedure
+    .input(z.object({
+      count: z.number().int().min(1).max(100).default(1),
+      maxUses: z.number().int().min(1).max(1000).default(1),
+      expiresInDays: z.number().int().min(0).max(3650).optional(),
+      note: z.string().max(200).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { nanoid } = await import("nanoid");
+      const codes: string[] = [];
+      for (let i = 0; i < input.count; i++) {
+        const code = nanoid(8).toUpperCase();
+        const expiresAt = input.expiresInDays
+          ? Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000
+          : undefined;
+        await db.createInviteCode({
+          code,
+          createdBy: ctx.user.id,
+          maxUses: input.maxUses,
+          expiresAt,
+          note: input.note,
+        });
+        codes.push(code);
+      }
+      return { success: true, codes };
+    }),
+
+  /** 删除邀请码 */
+  deleteInviteCode: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      await db.deleteInviteCode(input.id);
+      return { success: true };
+    }),
+
+  /** 切换邀请码开关（返回当前状态） */
+  getInviteRequired: adminProcedure
+    .query(async () => {
+      return { required: process.env.REQUIRE_INVITE_CODE === "true" };
+    }),
 });
