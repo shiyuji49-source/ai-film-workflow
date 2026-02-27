@@ -258,6 +258,7 @@ export default function Phase3() {
   const scriptContentRef = useRef<HTMLDivElement>(null);
 
   const generateShotsMutation = trpc.ai.generateShots.useMutation();
+  const phase3Utils = trpc.useUtils();
 
   const episodes = scriptAnalysis.episodes;
   const activeEp = episodes.find(e => e.id === activeEpTab);
@@ -319,9 +320,15 @@ export default function Phase3() {
       });
       addShotsFromAI(activeEpTab, result.shots);
       toast.success(`已为「${activeEp.title}」生成 ${result.shots.length} 个分镜`);
+      // 刷新积分余额
+      phase3Utils.auth.me.invalidate();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "未知错误";
-      toast.error(`AI 分镜生成失败：${msg}`);
+      if (msg.includes("积分不足")) {
+        toast.error(msg);
+      } else {
+        toast.error(`AI 分镜生成失败：${msg}`);
+      }
     } finally {
       setGeneratingEp(null);
     }

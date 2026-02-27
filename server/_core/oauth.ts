@@ -28,15 +28,15 @@ export function registerOAuthRoutes(app: Express) {
         return;
       }
 
-      await db.upsertUser({
-        openId: userInfo.openId,
-        name: userInfo.name || null,
-        email: userInfo.email ?? null,
-        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-        lastSignedIn: new Date(),
-      });
+      // Custom auth: OAuth flow is disabled, using email/phone+password instead
+      // We still create a session token for compatibility, but user must exist in DB
+      const existingUser = await db.getUserByIdentifier(userInfo.email ?? userInfo.openId);
+      if (!existingUser) {
+        res.status(403).json({ error: "User not registered" });
+        return;
+      }
 
-      const sessionToken = await sdk.createSessionToken(userInfo.openId, {
+      const sessionToken = await sdk.createSessionToken(String(existingUser.id), {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
       });

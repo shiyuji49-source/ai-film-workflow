@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE users \n  ADD COLUMN IF NOT EXISTS identifier VARCHAR(320) NULL,\n  ADD COLUMN IF NOT EXISTS identifierType ENUM('email', 'phone') NULL,\n  ADD COLUMN IF NOT EXISTS passwordHash VARCHAR(256) NULL,\n  ADD COLUMN IF NOT EXISTS credits INT NOT NULL DEFAULT 10000;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute \nALTER TABLE users \n  ADD COLUMN IF NOT EXISTS identifier VARCHAR(320) NULL,\n  ADD COLUMN IF NOT EXISTS identifierType ENUM('email', 'phone') NULL,\n  ADD COLUMN IF NOT EXISTS passwordHash VARCHAR(256) NULL,\n  ADD COLUMN IF NOT EXISTS credits INT NOT NULL DEFAULT 10000;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1550
+}

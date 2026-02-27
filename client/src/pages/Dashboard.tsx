@@ -11,8 +11,9 @@ import { toast } from "sonner";
 import {
   Film, Plus, Trash2, Copy, Download, Share2, Upload,
   FolderOpen, Clock, CheckCircle2, ChevronRight, FileJson,
-  FileText, Layers, Clapperboard,
+  FileText, Layers, Clapperboard, Coins, LogOut,
 } from "lucide-react";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 const PHASE_LABELS: Record<string, string> = {
   phase1: "项目定义",
@@ -39,6 +40,7 @@ interface DashboardProps {
 
 export default function Dashboard({ onOpenProject }: DashboardProps) {
   const manager = useProjectManager();
+  const { user, logout } = useAuth();
   const [search, setSearch] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -133,7 +135,20 @@ export default function Dashboard({ onOpenProject }: DashboardProps) {
               <div style={{ fontSize: 11, color: "oklch(0.55 0.01 240)", fontFamily: "'JetBrains Mono', monospace", marginTop: -2 }}>AI FILM WORKFLOW</div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Credits */}
+            {user && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: "oklch(0.18 0.007 240)", border: "1px solid oklch(0.26 0.008 240)", fontSize: 12, fontWeight: 700, color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
+                <Coins size={12} />
+                {user.credits?.toLocaleString() ?? "—"} 积分
+              </div>
+            )}
+            {/* User name */}
+            {user && (
+              <div style={{ fontSize: 12, color: "oklch(0.60 0.01 240)", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user.name || user.identifier}
+              </div>
+            )}
             <input ref={importRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
             <Button variant="outline" size="sm" onClick={() => importRef.current?.click()}
               style={{ borderColor: "oklch(0.28 0.008 240)", color: "oklch(0.65 0.01 240)", background: "transparent", gap: 6 }}>
@@ -143,6 +158,12 @@ export default function Dashboard({ onOpenProject }: DashboardProps) {
               style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontWeight: 600, gap: 6 }}>
               <Plus size={14} /> 新建项目
             </Button>
+            {user && (
+              <Button variant="outline" size="sm" onClick={() => logout()}
+                style={{ borderColor: "oklch(0.28 0.008 240)", color: "oklch(0.55 0.01 240)", background: "transparent", gap: 6 }}>
+                <LogOut size={14} /> 退出
+              </Button>
+            )}
           </div>
         </div>
       </div>

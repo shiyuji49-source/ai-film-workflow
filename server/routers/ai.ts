@@ -1,4 +1,6 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import * as db from "../db";
 import { publicProcedure, router } from "../_core/trpc";
 import { ENV } from "../_core/env";
 
@@ -56,7 +58,14 @@ export const aiRouter = router({
       scriptText: z.string().min(10).max(200000),
       styleZh: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // 登录用户扣 1 积分
+      if (ctx.user) {
+        if (ctx.user.credits < 1) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "积分不足，无法解析剧本（需要 1 积分）" });
+        }
+        await db.deductCredits(ctx.user.id, 1, "analyze_script", undefined, "AI 解析剧本");
+      }
       const prompt = `你是一位专业的影视制作人和剧本分析师。请仔细阅读以下剧本，进行结构化分析。
 
 【分析规则】
@@ -288,10 +297,15 @@ ${input.scriptText.slice(0, 80000)}
       styleZh: z.string().optional(),
       episodeScript: z.string().optional(), // 当集原剧本文本
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {      const targetShots = Math.min(Math.round(input.durationMinutes * 25), 60);
+      // 登录用户按镜头数扣积分（每镜头 1 积分）
+      if (ctx.user) {
+        if (ctx.user.credits < targetShots) {
+          throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成 ${targetShots} 个分镜需要 ${targetShots} 积分（当前 ${ctx.user.credits}）` });
+        }
+        await db.deductCredits(ctx.user.id, targetShots, "generate_shot", undefined, `AI 生成 ${targetShots} 个分镜`);
+      }
       const { episodeTitle, episodeNumber, episodeSynopsis, durationMinutes, scenes, characters, styleZh, episodeScript } = input;
-      // Cap at 60 shots per request to avoid token overflow (~60 shots ≈ 30k tokens output)
-      const targetShots = Math.min(Math.round(durationMinutes * 25), 60);
 
       // 如果有原剧本文本，截取到合理长度（避免超出输入 token 限制）
       const scriptSection = episodeScript
@@ -369,7 +383,14 @@ ${input.scriptText.slice(0, 80000)}
       styleEn: z.string().optional(),
       episodeContext: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // 登录用户扣 3 积分/条
+      if (ctx.user) {
+        if (ctx.user.credits < 3) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "积分不足，生成视频提示词需要 3 积分" });
+        }
+        await db.deductCredits(ctx.user.id, 3, "generate_prompt", undefined, "AI 生成 Seedance 视频提示词");
+      }
       const { shots, totalDuration, styleZh, styleEn, episodeContext } = input;
 
       const shotsDesc = shots.map(s =>

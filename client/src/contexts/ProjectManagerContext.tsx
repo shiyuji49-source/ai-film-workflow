@@ -1,8 +1,10 @@
 // DESIGN: "鎏光机" 导演手册工业风暗色系 — Multi-Project Manager Context
-// Manages a list of projects, each containing a full ProjectState snapshot.
-// Persists to localStorage automatically.
+// 已登录用户：项目数据同步到数据库（每账号独立）
+// 未登录用户：项目数据存在 localStorage（兼容旧版）
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import type {
   ProjectInfo, ScriptAnalysis, Character, EpisodeAsset, Shot, VideoSegment,
 } from "./ProjectContext";
@@ -27,6 +29,8 @@ export interface ProjectSnapshot {
 interface ProjectManagerContextType {
   projects: ProjectSnapshot[];
   activeProjectId: string | null;
+  isCloudMode: boolean;
+  isSyncing: boolean;
 
   createProject: () => string;
   duplicateProject: (id: string) => string;
@@ -62,7 +66,6 @@ function defaultScriptAnalysis(): ScriptAnalysis {
 }
 
 function migrateSnapshot(raw: Record<string, unknown>): ProjectSnapshot {
-  // 对旧版本数据做字段补全，防止新字段为 undefined
   const defaultInfo = defaultProjectInfo();
   const rawInfo = (raw.projectInfo as Record<string, unknown>) || {};
   const projectInfo: ProjectInfo = {
@@ -78,7 +81,6 @@ function migrateSnapshot(raw: Record<string, unknown>): ProjectSnapshot {
     styleCategory: (rawInfo.styleCategory as string) ?? defaultInfo.styleCategory,
     styleSubtype: (rawInfo.styleSubtype as string) ?? defaultInfo.styleSubtype,
   };
-  // 修复 Character 缺少 isMecha 字段
   const characters = ((raw.characters as Record<string, unknown>[]) || []).map(c => ({
     id: (c.id as string) || "",
     name: (c.name as string) || "",
@@ -106,7 +108,7 @@ function migrateSnapshot(raw: Record<string, unknown>): ProjectSnapshot {
   };
 }
 
-function loadProjects(): ProjectSnapshot[] {
+function loadLocalProjects(): ProjectSnapshot[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -117,7 +119,7 @@ function loadProjects(): ProjectSnapshot[] {
   }
 }
 
-function saveProjects(projects: ProjectSnapshot[]) {
+function saveLocalProjects(projects: ProjectSnapshot[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
   } catch {
@@ -244,33 +246,147 @@ function downloadText(content: string, filename: string, mime = "text/plain") {
 const ProjectManagerContext = createContext<ProjectManagerContextType | null>(null);
 
 export function ProjectManagerProvider({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated } = useAuth();
+  const isCloudMode = isAuthenticated && !!user;
+
+  // ── Local state ──────────────────────────────────────────────────────────────
   const [projects, setProjects] = useState<ProjectSnapshot[]>(() => {
-    const loaded = loadProjects();
+    const loaded = loadLocalProjects();
     return loaded.length > 0 ? loaded : [newSnapshot({ projectInfo: { ...defaultProjectInfo(), title: "我的第一个项目" } })];
   });
 
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => {
     const saved = localStorage.getItem(ACTIVE_KEY);
-    const loaded = loadProjects();
+    const loaded = loadLocalProjects();
     if (saved && loaded.some(p => p.id === saved)) return saved;
     return loaded.length > 0 ? loaded[0].id : null;
   });
 
-  // Auto-save to localStorage whenever projects change
+  const [isSyncing, setIsSyncing] = useState(false);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── tRPC mutations ────────────────────────────────────────────────────────────
+  const saveProjectMutation = trpc.projects.save.useMutation();
+  const deleteProjectMutation = trpc.projects.delete.useMutation();
+  const utils = trpc.useUtils();
+
+  // ── Cloud: load projects on login ────────────────────────────────────────────
+  const { data: cloudProjects, isLoading: cloudLoading } = trpc.projects.list.useQuery(undefined, {
+    enabled: isCloudMode,
+    refetchOnWindowFocus: false,
+  });
+
+  // When cloud projects load, replace local state
+  const cloudLoadedRef = useRef(false);
   useEffect(() => {
-    saveProjects(projects);
-  }, [projects]);
+    if (!isCloudMode || cloudLoading || cloudLoadedRef.current) return;
+    if (!cloudProjects) return;
+
+    // Cloud projects are just metadata (no data field yet). We need to fetch full data lazily.
+    // For now, set project list from cloud metadata, data will be loaded on switch.
+    if (cloudProjects.length > 0) {
+      // We'll keep local snapshots for projects that exist in cloud (matched by clientId)
+      // and add any cloud-only projects as stubs
+      setProjects(prev => {
+        const localMap = new Map(prev.map(p => [p.id, p]));
+        const merged: ProjectSnapshot[] = cloudProjects.map(cp => {
+          const local = localMap.get(cp.clientId);
+          if (local) return { ...local, updatedAt: cp.lastActiveAt.getTime() };
+          // Cloud-only project: create stub
+          return newSnapshot({
+            id: cp.clientId,
+            createdAt: cp.createdAt.getTime(),
+            updatedAt: cp.lastActiveAt.getTime(),
+            projectInfo: { ...defaultProjectInfo(), title: cp.name },
+          });
+        });
+        return merged;
+      });
+      const firstId = cloudProjects[0].clientId;
+      setActiveProjectId(prev => {
+        if (prev && cloudProjects.some(cp => cp.clientId === prev)) return prev;
+        return firstId;
+      });
+    }
+    cloudLoadedRef.current = true;
+  }, [isCloudMode, cloudLoading, cloudProjects]);
+
+  // Reset cloud loaded flag on logout
+  useEffect(() => {
+    if (!isAuthenticated) {
+      cloudLoadedRef.current = false;
+    }
+  }, [isAuthenticated]);
+
+  // ── Cloud: load full project data when switching ──────────────────────────────
+  const { data: activeCloudProject } = trpc.projects.get.useQuery(
+    { clientId: activeProjectId! },
+    {
+      enabled: isCloudMode && !!activeProjectId,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  useEffect(() => {
+    if (!isCloudMode || !activeCloudProject) return;
+    try {
+      const parsed = JSON.parse(activeCloudProject.data) as Record<string, unknown>;
+      const snap = migrateSnapshot(parsed);
+      setProjects(prev => prev.map(p =>
+        p.id === activeProjectId ? { ...snap, id: activeProjectId! } : p
+      ));
+    } catch {
+      // invalid JSON in cloud — ignore
+    }
+  }, [activeCloudProject, activeProjectId, isCloudMode]);
+
+  // ── Auto-save to localStorage (local mode) ────────────────────────────────────
+  useEffect(() => {
+    if (!isCloudMode) {
+      saveLocalProjects(projects);
+    }
+  }, [projects, isCloudMode]);
 
   useEffect(() => {
     if (activeProjectId) localStorage.setItem(ACTIVE_KEY, activeProjectId);
   }, [activeProjectId]);
 
+  // ── Cloud sync helper (debounced) ─────────────────────────────────────────────
+  const syncToCloud = useCallback((snapshot: ProjectSnapshot) => {
+    if (!isCloudMode) return;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(async () => {
+      setIsSyncing(true);
+      try {
+        await saveProjectMutation.mutateAsync({
+          clientId: snapshot.id,
+          name: snapshot.projectInfo.title || "未命名项目",
+          data: JSON.stringify(snapshot),
+        });
+        await utils.projects.list.invalidate();
+      } catch (err) {
+        console.warn("[Cloud sync] Failed:", err);
+      } finally {
+        setIsSyncing(false);
+      }
+    }, 2000); // 2s debounce
+  }, [isCloudMode, saveProjectMutation, utils]);
+
+  // ── Project operations ────────────────────────────────────────────────────────
+
   const createProject = useCallback(() => {
     const snap = newSnapshot();
     setProjects(prev => [snap, ...prev]);
     setActiveProjectId(snap.id);
+    if (isCloudMode) {
+      saveProjectMutation.mutate({
+        clientId: snap.id,
+        name: "未命名项目",
+        data: JSON.stringify(snap),
+      });
+    }
     return snap.id;
-  }, []);
+  }, [isCloudMode, saveProjectMutation]);
 
   const duplicateProject = useCallback((id: string) => {
     setProjects(prev => {
@@ -284,10 +400,17 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
         projectInfo: { ...src.projectInfo, title: `${src.projectInfo.title || "项目"} (副本)` },
       });
       setActiveProjectId(copy.id);
+      if (isCloudMode) {
+        saveProjectMutation.mutate({
+          clientId: copy.id,
+          name: copy.projectInfo.title,
+          data: JSON.stringify(copy),
+        });
+      }
       return [copy, ...prev];
     });
     return "";
-  }, []);
+  }, [isCloudMode, saveProjectMutation]);
 
   const deleteProject = useCallback((id: string) => {
     setProjects(prev => {
@@ -303,19 +426,26 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
       });
       return next;
     });
-  }, []);
+    if (isCloudMode) {
+      deleteProjectMutation.mutate({ clientId: id });
+    }
+  }, [isCloudMode, deleteProjectMutation]);
 
   const switchProject = useCallback((id: string) => {
     setActiveProjectId(id);
   }, []);
 
   const updateProjectSnapshot = useCallback((snapshot: Partial<ProjectSnapshot>) => {
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId
-        ? { ...p, ...snapshot, updatedAt: Date.now() }
-        : p
-    ));
-  }, [activeProjectId]);
+    setProjects(prev => {
+      const updated = prev.map(p => {
+        if (p.id !== activeProjectId) return p;
+        const merged = { ...p, ...snapshot, updatedAt: Date.now() };
+        syncToCloud(merged);
+        return merged;
+      });
+      return updated;
+    });
+  }, [activeProjectId, syncToCloud]);
 
   const exportProjectMarkdown = useCallback((id: string) => {
     const p = projects.find(proj => proj.id === id);
@@ -339,10 +469,17 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
       const snap = newSnapshot({ ...data, id: nanoid(), updatedAt: Date.now() });
       setProjects(prev => [snap, ...prev]);
       setActiveProjectId(snap.id);
+      if (isCloudMode) {
+        saveProjectMutation.mutate({
+          clientId: snap.id,
+          name: snap.projectInfo.title || "导入项目",
+          data: JSON.stringify(snap),
+        });
+      }
     } catch {
       // invalid JSON — caller should show error
     }
-  }, []);
+  }, [isCloudMode, saveProjectMutation]);
 
   const getShareLink = useCallback((id: string) => {
     const p = projects.find(proj => proj.id === id);
@@ -366,7 +503,7 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
 
   return (
     <ProjectManagerContext.Provider value={{
-      projects, activeProjectId,
+      projects, activeProjectId, isCloudMode, isSyncing,
       createProject, duplicateProject, deleteProject, switchProject,
       updateProjectSnapshot, exportProjectMarkdown, exportProjectJSON,
       importProjectJSON, getShareLink, importFromShareLink,

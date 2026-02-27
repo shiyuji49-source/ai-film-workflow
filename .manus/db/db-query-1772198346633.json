@@ -1,0 +1,15 @@
+{
+  "query": "SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'identifier';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'identifier';",
+  "rows": [
+    {
+      "INDEX_NAME": "idx_users_identifier",
+      "COLUMN_NAME": "identifier",
+      "NON_UNIQUE": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "INDEX_NAME\tCOLUMN_NAME\tNON_UNIQUE\nidx_users_identifier\tidentifier\t0\n",
+  "stderr": "",
+  "execution_time_ms": 1618
+}

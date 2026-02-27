@@ -55,6 +55,7 @@ export default function Phase4() {
   const styleLabel = projectInfo.styleCategory ? `${projectInfo.styleCategory}${projectInfo.styleSubtype ? " · " + projectInfo.styleSubtype : ""}` : "";
 
   const generateVideoPromptMutation = trpc.ai.generateVideoPrompt.useMutation();
+  const phase4Utils = trpc.useUtils();
 
   const handleAutoGenerateSegments = (episodeId: string) => {
     const epShots = shots.filter(s => s.episodeId === episodeId);
@@ -103,9 +104,16 @@ export default function Phase4() {
       });
       updateVideoSegment(segId, { prompt: result.prompt });
       toast.success("提示词生成完成");
+      // 刷新积分余额
+      phase4Utils.auth.me.invalidate();
     } catch (err) {
-      toast.error("生成失败，请重试");
-      console.error(err);
+      const errMsg = err instanceof Error ? err.message : "未知错误";
+      if (errMsg.includes("积分不足")) {
+        toast.error(errMsg);
+      } else {
+        toast.error("生成失败，请重试");
+        console.error(err);
+      }
     } finally {
       setGeneratingSegId(null);
     }
@@ -149,10 +157,16 @@ export default function Phase4() {
         updateVideoSegment(seg.id, { prompt: result.prompt });
         successCount++;
       } catch (err) {
+        const errMsg2 = err instanceof Error ? err.message : "";
+        if (errMsg2.includes("积分不足")) {
+          toast.error(errMsg2);
+          break; // 积分不足时停止批量生成
+        }
         console.error(`片段 ${seg.name} 生成失败`, err);
       }
     }
     setGeneratingAllEpId(null);
+    if (successCount > 0) phase4Utils.auth.me.invalidate();
     toast.success(`已生成 ${successCount}/${epSegs.length} 个片段提示词`);
   };
 

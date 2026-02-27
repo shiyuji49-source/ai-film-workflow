@@ -1,0 +1,9 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS `credit_transactions` (\n  `id` varchar(36) NOT NULL,\n  `userId` varchar(36) NOT NULL,\n  `amount` int NOT NULL,\n  `type` varchar(50) NOT NULL,\n  `projectId` varchar(36) DEFAULT NULL,\n  `description` varchar(255) DEFAULT NULL,\n  `createdAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  PRIMARY KEY (`id`),\n  KEY `idx_credit_transactions_userId` (`userId`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute \nCREATE TABLE IF NOT EXISTS `credit_transactions` (\n  `id` varchar(36) NOT NULL,\n  `userId` varchar(36) NOT NULL,\n  `amount` int NOT NULL,\n  `type` varchar(50) NOT NULL,\n  `projectId` varchar(36) DEFAULT NULL,\n  `description` varchar(255) DEFAULT NULL,\n  `createdAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  PRIMARY KEY (`id`),\n  KEY `idx_credit_transactions_userId` (`userId`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1739
+}

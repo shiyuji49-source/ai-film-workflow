@@ -66,6 +66,8 @@ export default function Phase1() {
 
   const analyzeScriptMutation = trpc.ai.analyzeScript.useMutation();
 
+  const analyzeUtils = trpc.useUtils();
+
   const handleAnalyze = async () => {
     if (!scriptText.trim()) { toast.error("请先输入或上传剧本内容"); return; }
     setIsAnalyzing(true);
@@ -76,9 +78,17 @@ export default function Phase1() {
       });
       analyzeScriptWithAI(result);
       toast.success(`AI 解析完成，共识别 ${result.episodes.length} 集，${result.characters.length} 个角色`);
+      // 刷新积分余额
+      analyzeUtils.auth.me.invalidate();
     } catch (err) {
-      // 降级到本地规则解析
-      toast.error(`AI 解析失败，使用本地规则解析：${err instanceof Error ? err.message : "未知错误"}`);
+      const msg = err instanceof Error ? err.message : "未知错误";
+      // 积分不足：直接提示，不降级
+      if (msg.includes("积分不足")) {
+        toast.error(msg);
+        return;
+      }
+      // 其他错误：降级到本地规则解析
+      toast.error(`AI 解析失败，使用本地规则解析：${msg}`);
       analyzeScript();
     } finally {
       setIsAnalyzing(false);
