@@ -1,16 +1,18 @@
-// DESIGN: "导演手册" 工业风暗色系
-// Main layout: fixed left sidebar (64 steps nav) + right scrollable content area
+// DESIGN: "鎏光机" 导演手册工业风暗色系
+// Main layout: Dashboard (project list) ↔ Workflow (6-phase editor)
 import { motion, AnimatePresence } from "framer-motion";
 import Sidebar from "@/components/Sidebar";
 import { useProject } from "@/contexts/ProjectContext";
+import { useProjectManager } from "@/contexts/ProjectManagerContext";
 import Phase1 from "./phases/Phase1";
 import Phase2 from "./phases/Phase2";
 import Phase3 from "./phases/Phase3";
 import Phase4 from "./phases/Phase4";
 import Phase5 from "./phases/Phase5";
 import Phase6 from "./phases/Phase6";
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import Dashboard from "./Dashboard";
+import { useState, useEffect } from "react";
+import { Menu, Clapperboard } from "lucide-react";
 
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663381754893/9BgyFdoC3HjLKXJmyAaqgB/hero-bg-aFre9kdGFYSWzCA6sTB4wa.webp";
 
@@ -25,13 +27,35 @@ const PHASE_MAP: Record<string, React.ReactNode> = {
 
 export default function Home() {
   const { activePhase } = useProject();
+  const { activeProjectId } = useProjectManager();
+  const [view, setView] = useState<"dashboard" | "workflow">("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // When active project changes (e.g. after create), auto-switch to workflow
+  useEffect(() => {
+    if (view === "workflow") {
+      // stay in workflow when switching projects
+    }
+  }, [activeProjectId]);
+
+  // Check URL hash for share link on mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith("#share=")) {
+      // handled by ProjectManagerContext on mount
+      setView("workflow");
+    }
+  }, []);
+
+  if (view === "dashboard") {
+    return <Dashboard onOpenProject={() => setView("workflow")} />;
+  }
 
   return (
     <div className="min-h-screen flex" style={{ background: "oklch(0.13 0.005 240)" }}>
       {/* Desktop sidebar */}
       <div className="hidden lg:block w-64 flex-shrink-0">
-        <Sidebar />
+        <Sidebar onBackToDashboard={() => setView("dashboard")} />
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -53,7 +77,7 @@ export default function Home() {
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               className="fixed left-0 top-0 z-40 lg:hidden"
             >
-              <Sidebar />
+              <Sidebar onBackToDashboard={() => { setSidebarOpen(false); setView("dashboard"); }} />
             </motion.div>
           </>
         )}
@@ -68,23 +92,22 @@ export default function Home() {
             style={{ color: "oklch(0.70 0.008 240)" }}>
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-sm font-semibold" style={{ color: "oklch(0.88 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            AI 影片制作工作流工具
-          </span>
+          <div className="flex items-center gap-2">
+            <Clapperboard size={16} style={{ color: "oklch(0.75 0.17 65)" }} />
+            <span className="text-sm font-bold" style={{ color: "oklch(0.88 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
+              鎏光机
+            </span>
+          </div>
           <div className="w-8" />
         </div>
 
-        {/* Hero section (only on phase1 first visit) */}
+        {/* Hero section (only on phase1) */}
         {activePhase === "phase1" && (
-          <div className="relative overflow-hidden" style={{ height: "220px" }}>
-            <img
-              src={HERO_BG}
-              alt="Film production control room"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to right, oklch(0.13 0.005 240 / 0.92) 0%, oklch(0.13 0.005 240 / 0.7) 60%, oklch(0.13 0.005 240 / 0.4) 100%)" }} />
+          <div className="relative overflow-hidden" style={{ height: "200px" }}>
+            <img src={HERO_BG} alt="Film production" className="absolute inset-0 w-full h-full object-cover" />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to right, oklch(0.13 0.005 240 / 0.95) 0%, oklch(0.13 0.005 240 / 0.75) 60%, oklch(0.13 0.005 240 / 0.4) 100%)" }} />
             <div className="relative z-10 h-full flex flex-col justify-center px-8 lg:px-10">
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-2">
                 <div className="h-px w-8" style={{ background: "oklch(0.75 0.17 65)" }} />
                 <span className="text-xs tracking-widest uppercase" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
                   AI Film Workflow Tool
@@ -92,11 +115,11 @@ export default function Home() {
               </div>
               <h1 className="text-3xl lg:text-4xl font-bold leading-tight mb-2"
                 style={{ color: "oklch(0.95 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
-                AI 影片制作<br />工作流工具
+                鎏光机<br />
+                <span className="text-xl font-medium" style={{ color: "oklch(0.75 0.17 65)" }}>AI 影片工作流工具</span>
               </h1>
               <p className="text-sm max-w-md" style={{ color: "oklch(0.70 0.008 240)" }}>
-                从项目定义到视频生成，六阶段全流程引导。
-                MJ → Nanobananapro → 即梦 Seedance 2.0
+                MJ → Nanobananapro → 即梦 Seedance 2.0 · 六阶段全流程引导
               </p>
             </div>
           </div>
@@ -123,7 +146,7 @@ export default function Home() {
         <div className="px-8 py-3 border-t flex items-center justify-between"
           style={{ borderColor: "oklch(0.22 0.006 240)", background: "oklch(0.12 0.005 240)" }}>
           <span className="text-[10px] tracking-widest uppercase" style={{ color: "oklch(0.35 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
-            AI Film Workflow Tool · 基于修订版方法论
+            鎏光机 AI 影片工作流工具
           </span>
           <span className="text-[10px]" style={{ color: "oklch(0.35 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
             MJ → Nanobananapro → Seedance 2.0

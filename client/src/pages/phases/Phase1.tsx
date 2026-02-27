@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ChevronRight, AlertTriangle, Upload, FileText, Wand2, Users, MapPin, Package } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
+import { extractTextFromFile, detectFormat, ACCEPTED_FORMATS, formatLabel } from "@/lib/scriptParser";
 
 export default function Phase1() {
   const { projectInfo, updateProjectInfo, scriptText, setScriptText,
@@ -24,16 +25,34 @@ export default function Phase1() {
     updateProjectInfo({ styleZh: tag.zh, styleEn: tag.en });
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+  const [isFileLoading, setIsFileLoading] = useState(false);
+
+  const processFile = async (file: File) => {
+    setIsFileLoading(true);
+    try {
+      const fmt = detectFormat(file);
+      const text = await extractTextFromFile(file);
+      setScriptText(text);
+      toast.success(`已加载剧本：${file.name}（${formatLabel(fmt)}）`);
+    } catch (err) {
+      toast.error(`解析失败：${err instanceof Error ? err.message : "未知错误"}`);
+    } finally {
+      setIsFileLoading(false);
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      setScriptText(text);
-      toast.success(`已加载剧本：${file.name}`);
-    };
-    reader.readAsText(file, "utf-8");
+    if (file) processFile(file);
+    e.target.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
   };
 
   const handleAnalyze = () => {
@@ -185,16 +204,33 @@ export default function Phase1() {
           剧本上传与解析
         </h3>
 
-        {/* Upload area */}
-        <div className="mb-3 p-4 rounded flex items-center gap-4 cursor-pointer transition-all"
-          style={{ background: "oklch(0.17 0.006 240)", border: "2px dashed oklch(0.35 0.008 240)" }}
-          onClick={() => fileInputRef.current?.click()}>
-          <Upload className="w-6 h-6 flex-shrink-0" style={{ color: "oklch(0.55 0.01 240)" }} />
-          <div>
-            <p className="text-sm font-medium" style={{ color: "oklch(0.80 0.005 60)" }}>点击上传剧本文件</p>
-            <p className="text-xs" style={{ color: "oklch(0.45 0.008 240)" }}>支持 .txt / .md 纯文本格式，或直接在下方粘贴</p>
+        {/* Upload area — multi-format drag & drop */}
+        <div className="mb-3 p-5 rounded cursor-pointer transition-all"
+          style={{
+            background: isDragging ? "oklch(0.75 0.17 65 / 0.06)" : "oklch(0.17 0.006 240)",
+            border: `2px dashed ${isDragging ? "oklch(0.75 0.17 65 / 0.7)" : "oklch(0.35 0.008 240)"}`
+          }}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}>
+          <div className="flex items-center gap-4 mb-3">
+            <Upload className="w-6 h-6 flex-shrink-0" style={{ color: isFileLoading ? "oklch(0.75 0.17 65)" : "oklch(0.55 0.01 240)" }} />
+            <div>
+              <p className="text-sm font-medium" style={{ color: "oklch(0.80 0.005 60)" }}>
+                {isFileLoading ? "正在解析文件..." : "点击或拖拽上传剧本文件"}
+              </p>
+              <p className="text-xs" style={{ color: "oklch(0.45 0.008 240)" }}>支持多种格式，或直接在下方粘贴文本</p>
+            </div>
           </div>
-          <input ref={fileInputRef} type="file" accept=".txt,.md" className="hidden" onChange={handleFileUpload} />
+          <div className="flex flex-wrap gap-2">
+            {(["txt", "md", "fountain", "docx", "pdf"] as const).map(fmt => (
+              <span key={fmt} style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", borderRadius: 6, padding: "2px 8px", fontSize: 11, color: "oklch(0.65 0.01 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+                .{fmt}
+              </span>
+            ))}
+          </div>
+          <input ref={fileInputRef} type="file" accept={ACCEPTED_FORMATS} className="hidden" onChange={handleFileUpload} />
         </div>
 
         <Textarea value={scriptText} onChange={e => setScriptText(e.target.value)}

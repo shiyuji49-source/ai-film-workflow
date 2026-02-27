@@ -1,32 +1,59 @@
-// DESIGN: "导演手册" 工业风暗色系
+// DESIGN: "鎏光机" 导演手册工业风暗色系
 // Left sidebar: fixed workflow step navigator with film-counter style numbers
 import { cn } from "@/lib/utils";
 import { useProject } from "@/contexts/ProjectContext";
+import { useProjectManager } from "@/contexts/ProjectManagerContext";
 import { WORKFLOW_STEPS } from "@/lib/workflowData";
-import { CheckCircle2, Circle, Film } from "lucide-react";
+import { CheckCircle2, Circle, Film, LayoutGrid, Clapperboard } from "lucide-react";
 
-export default function Sidebar() {
+interface SidebarProps {
+  onBackToDashboard: () => void;
+}
+
+export default function Sidebar({ onBackToDashboard }: SidebarProps) {
   const { activePhase, setActivePhase, completedPhases, projectInfo, scriptAnalysis } = useProject();
+  const { projects, activeProjectId } = useProjectManager();
+  const projectCount = projects.length;
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col z-40"
       style={{ background: "oklch(0.12 0.005 240)", borderRight: "1px solid oklch(0.25 0.008 240)" }}>
       {/* Logo / Header */}
-      <div className="px-6 py-5 border-b" style={{ borderColor: "oklch(0.25 0.008 240)" }}>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
-            style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'JetBrains Mono', monospace" }}>
-            AI
+      <div className="px-5 py-4 border-b" style={{ borderColor: "oklch(0.25 0.008 240)" }}>
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)" }}>
+            <Clapperboard size={16} />
           </div>
-          <span className="text-xs tracking-widest uppercase font-medium"
-            style={{ color: "oklch(0.55 0.01 240)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            Film Workflow
-          </span>
+          <div>
+            <h1 className="text-sm font-bold leading-tight"
+              style={{ color: "oklch(0.92 0.005 60)", fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.01em" }}>
+              鎏光机
+            </h1>
+            <p className="text-[10px] tracking-widest uppercase"
+              style={{ color: "oklch(0.50 0.01 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+              AI FILM WORKFLOW
+            </p>
+          </div>
         </div>
-        <h1 className="text-sm font-semibold leading-tight"
-          style={{ color: "oklch(0.92 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
-          AI 影片制作<br />工作流工具
-        </h1>
+
+        {/* Back to dashboard button */}
+        <button
+          onClick={onBackToDashboard}
+          className="w-full flex items-center gap-2 px-2.5 py-2 rounded transition-all duration-200"
+          style={{ background: "oklch(0.18 0.006 240)", border: "1px solid oklch(0.25 0.008 240)" }}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "oklch(0.75 0.17 65 / 0.4)")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "oklch(0.25 0.008 240)")}
+        >
+          <LayoutGrid size={13} style={{ color: "oklch(0.65 0.01 240)", flexShrink: 0 }} />
+          <span className="text-xs flex-1 text-left" style={{ color: "oklch(0.70 0.008 240)", fontFamily: "'Space Grotesk', sans-serif" }}>
+            项目管理
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded"
+            style={{ background: "oklch(0.75 0.17 65 / 0.15)", color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
+            {projectCount}
+          </span>
+        </button>
       </div>
 
       {/* Steps */}
@@ -45,16 +72,11 @@ export default function Sidebar() {
                   onClick={() => setActivePhase(step.id)}
                   className={cn(
                     "w-full text-left px-3 py-2.5 rounded transition-all duration-200 group",
-                    isActive
-                      ? "text-[oklch(0.1_0.005_240)]"
-                      : "hover:bg-[oklch(0.18_0.006_240)]"
+                    isActive ? "text-[oklch(0.1_0.005_240)]" : "hover:bg-[oklch(0.18_0.006_240)]"
                   )}
-                  style={isActive ? {
-                    background: "oklch(0.75 0.17 65)",
-                  } : {}}
+                  style={isActive ? { background: "oklch(0.75 0.17 65)" } : {}}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Step number badge */}
                     <span className={cn(
                       "step-badge w-8 h-5 flex items-center justify-center rounded text-[10px] font-bold flex-shrink-0",
                       isActive
@@ -93,7 +115,7 @@ export default function Sidebar() {
         </ul>
       </nav>
 
-      {/* Project info */}
+      {/* Current project info */}
       {(projectInfo.title || scriptAnalysis.episodes.length > 0) && (
         <div className="px-4 py-3 border-t" style={{ borderColor: "oklch(0.25 0.008 240)" }}>
           <div className="flex items-center gap-2 mb-1">
