@@ -1,15 +1,10 @@
-// DESIGN: "导演手册" 工业风暗色系 — Phase 2: Asset Design (v2)
 import { useProject } from "@/contexts/ProjectContext";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, ChevronRight, Plus, Trash2, Wand2, Copy, Check, Pin } from "lucide-react";
-import PromptBox from "@/components/PromptBox";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, ChevronRight, Wand2, Copy, Check, Bot, User, Loader2, Pin } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 // ─── Fixed Nanobananapro Templates ────────────────────────────────────────────
 const NANO_TEMPLATES = {
@@ -56,407 +51,223 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export default function Phase2() {
-  const { projectInfo, characters, addCharacter, updateCharacter, removeCharacter,
-    generateCharacterPrompt, scriptAnalysis, episodeAssets, addEpisodeAsset,
-    updateEpisodeAsset, removeEpisodeAsset, generateAssetPromptMJ,
-    markPhaseComplete, setActivePhase } = useProject();
-
-  const [generatedPrompts, setGeneratedPrompts] = useState<Record<string, { zh: string; en: string }>>({});
-  const [generatedAssetPrompts, setGeneratedAssetPrompts] = useState<Record<string, string>>({});
-  const [activeEpTab, setActiveEpTab] = useState(
-    scriptAnalysis.episodes.length > 0 ? scriptAnalysis.episodes[0].id : "ep0"
+function PromptBlock({ label, zh, en }: { label: string; zh: string; en: string }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium" style={{ color: "oklch(0.60 0.01 240)", fontFamily: "'JetBrains Mono', monospace" }}>{label}</span>
+        <div className="flex gap-1">
+          <CopyButton text={zh} />
+          <CopyButton text={en} />
+        </div>
+      </div>
+      <div className="p-3 rounded text-xs leading-relaxed" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", color: "oklch(0.75 0.008 240)", fontFamily: "'JetBrains Mono', monospace", whiteSpace: "pre-wrap" }}>
+        <span style={{ color: "oklch(0.55 0.01 240)" }}>ZH: </span>{zh}
+      </div>
+      <div className="p-3 rounded text-xs leading-relaxed" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", color: "oklch(0.70 0.008 240)", fontFamily: "'JetBrains Mono', monospace", whiteSpace: "pre-wrap" }}>
+        <span style={{ color: "oklch(0.55 0.01 240)" }}>EN: </span>{en}
+      </div>
+    </div>
   );
+}
 
-  const handleGenerateChar = (charId: string) => {
+export default function Phase2() {
+  const { projectInfo, characters, updateCharacter, markPhaseComplete, setActivePhase } = useProject();
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [generatingAll, setGeneratingAll] = useState(false);
+
+  const generateCharPromptMutation = trpc.ai.generateCharacterPrompt.useMutation();
+
+  const handleGenerateChar = async (charId: string) => {
     const char = characters.find(c => c.id === charId);
     if (!char) return;
-    const result = generateCharacterPrompt(char);
-    setGeneratedPrompts(prev => ({ ...prev, [charId]: result }));
-    updateCharacter(charId, { promptZh: result.zh, promptEn: result.en });
+    setGeneratingId(charId);
+    try {
+      const result = await generateCharPromptMutation.mutateAsync({
+        name: char.name,
+        role: char.role || "角色",
+        isMecha: char.isMecha ?? false,
+        appearance: char.appearance || char.name,
+        costume: char.costume || "",
+        marks: char.marks || "",
+        styleZh: projectInfo.styleZh,
+        styleEn: projectInfo.styleEn,
+      });
+      updateCharacter(charId, { promptZh: result.zh, promptEn: result.en });
+      toast.success(`${char.name} 提示词已生成`);
+    } catch (err) {
+      toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`);
+    } finally {
+      setGeneratingId(null);
+    }
   };
 
-  const handleGenerateAllChars = () => {
-    characters.forEach(char => {
-      const result = generateCharacterPrompt(char);
-      setGeneratedPrompts(prev => ({ ...prev, [char.id]: result }));
-      updateCharacter(char.id, { promptZh: result.zh, promptEn: result.en });
-    });
-    toast.success(`已生成 ${characters.length} 个角色提示词`);
-  };
-
-  const handleGenerateAsset = (assetId: string) => {
-    const asset = episodeAssets.find(a => a.id === assetId);
-    if (!asset) return;
-    const prompt = generateAssetPromptMJ(asset);
-    setGeneratedAssetPrompts(prev => ({ ...prev, [assetId]: prompt }));
-    updateEpisodeAsset(assetId, { promptMJ: prompt });
+  const handleGenerateAll = async () => {
+    setGeneratingAll(true);
+    for (const char of characters) {
+      setGeneratingId(char.id);
+      try {
+        const result = await generateCharPromptMutation.mutateAsync({
+          name: char.name,
+          role: char.role || "角色",
+          isMecha: char.isMecha ?? false,
+          appearance: char.appearance || char.name,
+          costume: char.costume || "",
+          marks: char.marks || "",
+          styleZh: projectInfo.styleZh,
+          styleEn: projectInfo.styleEn,
+        });
+        updateCharacter(char.id, { promptZh: result.zh, promptEn: result.en });
+      } catch {
+        // continue with next character
+      }
+    }
+    setGeneratingId(null);
+    setGeneratingAll(false);
+    toast.success("全部人物提示词生成完成");
   };
 
   const handleComplete = () => {
     markPhaseComplete("phase2");
-    setActivePhase("phase3");
+    setActivePhase("phase2b");
   };
 
-  const episodes = scriptAnalysis.episodes;
+  const S = {
+    card: { background: "oklch(0.15 0.006 240)", border: "1px solid oklch(0.22 0.006 240)", borderRadius: "8px" } as React.CSSProperties,
+    amber: "oklch(0.75 0.17 65)",
+    dim: "oklch(0.55 0.01 240)",
+    text: "oklch(0.88 0.005 60)",
+    sub: "oklch(0.70 0.008 240)",
+  };
 
   return (
     <div className="space-y-8">
       {/* Phase header */}
       <div className="flex items-start gap-4">
         <div className="flex-shrink-0 w-12 h-12 rounded flex items-center justify-center text-lg font-bold"
-          style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.4)", color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
-          02
-        </div>
+          style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.4)", color: S.amber, fontFamily: "'JetBrains Mono', monospace" }}>02</div>
         <div>
-          <h2 className="text-xl font-bold" style={{ color: "oklch(0.92 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            核心资产设计
-          </h2>
-          <p className="text-sm mt-1" style={{ color: "oklch(0.55 0.01 240)" }}>
-            MJ7 探索风格 → Nanobananapro 生成精确资产 → 全集统一锚点
-          </p>
+          <h2 className="text-xl font-bold mb-1" style={{ color: S.text, fontFamily: "'Space Grotesk', sans-serif" }}>人物与机甲资产</h2>
+          <p className="text-sm" style={{ color: S.sub }}>全局人物 MJ7 竖版单张参考图提示词 · 不分集</p>
         </div>
       </div>
 
-      {/* ── SECTION A: Fixed Nanobananapro Templates ── */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Pin className="w-4 h-4" style={{ color: "oklch(0.75 0.17 65)" }} />
-          <h3 className="text-sm font-semibold" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            固定模板 — Nanobananapro 专用（所有项目通用）
-          </h3>
+      {/* ── Section A: Fixed Nanobananapro Templates ── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Pin className="w-4 h-4" style={{ color: S.amber }} />
+          <h3 className="text-sm font-bold tracking-widest uppercase" style={{ color: S.amber, fontFamily: "'JetBrains Mono', monospace" }}>固定模板 · Nanobananapro 专用</h3>
         </div>
-        <div className="p-3 rounded mb-4 text-xs"
-          style={{ background: "oklch(0.75 0.17 65 / 0.06)", border: "1px solid oklch(0.75 0.17 65 / 0.2)" }}>
-          <span style={{ color: "oklch(0.70 0.10 65)" }}>
-            以下模板为固定结构，将 [ ] 中的占位符替换为具体内容后，直接粘贴到 Nanobananapro 使用。
-          </span>
-        </div>
-        <div className="space-y-4">
-          {Object.entries(NANO_TEMPLATES).map(([key, tpl]) => (
-            <div key={key} className="rounded overflow-hidden"
-              style={{ border: "1px solid oklch(0.28 0.008 240)" }}>
-              <div className="flex items-center justify-between px-4 py-2.5"
-                style={{ background: "oklch(0.15 0.006 240)", borderBottom: "1px solid oklch(0.28 0.008 240)" }}>
-                <span className="text-xs font-semibold" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
-                  {tpl.label}
-                </span>
-              </div>
-              <div className="p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-widest" style={{ color: "oklch(0.45 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>中文模板</span>
-                  <CopyButton text={tpl.zh} />
-                </div>
-                <pre className="text-[10px] leading-relaxed whitespace-pre-wrap p-3 rounded"
-                  style={{ background: "oklch(0.10 0.004 240)", color: "oklch(0.80 0.005 60)", fontFamily: "'JetBrains Mono', monospace", borderLeft: "3px solid oklch(0.75 0.17 65)" }}>
-                  {tpl.zh}
-                </pre>
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-[10px] uppercase tracking-widest" style={{ color: "oklch(0.45 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>English Template</span>
-                  <CopyButton text={tpl.en} />
-                </div>
-                <pre className="text-[10px] leading-relaxed whitespace-pre-wrap p-3 rounded"
-                  style={{ background: "oklch(0.10 0.004 240)", color: "oklch(0.80 0.005 60)", fontFamily: "'JetBrains Mono', monospace", borderLeft: "3px solid oklch(0.65 0.18 280)" }}>
-                  {tpl.en}
-                </pre>
-              </div>
+        <p className="text-xs" style={{ color: S.dim }}>以下模板用于 Nanobananapro 生成高精度角色三视图和场景多角度图，将 [ ] 内容替换为实际描述后使用。</p>
+        {Object.entries(NANO_TEMPLATES).map(([key, tpl]) => (
+          <div key={key} className="p-4 space-y-3" style={S.card}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.55 0.18 290 / 0.15)", border: "1px solid oklch(0.55 0.18 290 / 0.4)", color: "oklch(0.70 0.18 290)", fontFamily: "'JetBrains Mono', monospace" }}>
+                Nanobananapro
+              </span>
+              <span className="text-sm font-medium" style={{ color: S.text }}>{tpl.label}</span>
             </div>
-          ))}
-        </div>
-      </section>
+            <PromptBlock label="模板提示词" zh={tpl.zh} en={tpl.en} />
+          </div>
+        ))}
+      </div>
 
-      {/* ── SECTION B: Global Characters & Mecha ── */}
-      <section>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold flex items-center gap-2"
-            style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            <span className="px-2 py-0.5 rounded text-[10px]"
-              style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>A</span>
-            人物与机甲资产提示词（不分集，全局统一）
-          </h3>
-          <div className="flex gap-2">
-            {characters.length > 0 && (
-              <Button onClick={handleGenerateAllChars} size="sm"
-                className="flex items-center gap-1.5 text-xs h-7"
-                style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
-                <Wand2 className="w-3 h-3" />
-                一键生成全部
-              </Button>
-            )}
-            <Button onClick={() => addCharacter()} size="sm" variant="outline"
-              className="flex items-center gap-1.5 text-xs h-7"
-              style={{ borderColor: "oklch(0.35 0.008 240)", color: "oklch(0.70 0.008 240)", background: "transparent" }}>
-              <Plus className="w-3 h-3" />
-              添加角色
+      {/* ── Section B: Global Character Prompts (MJ7) ── */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4" style={{ color: S.amber }} />
+            <h3 className="text-sm font-bold tracking-widest uppercase" style={{ color: S.amber, fontFamily: "'JetBrains Mono', monospace" }}>人物与机甲 · MJ7 竖版参考图</h3>
+          </div>
+          {characters.length > 0 && (
+            <Button size="sm" onClick={handleGenerateAll} disabled={generatingAll}
+              style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.4)", color: S.amber }}>
+              {generatingAll ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中...</> : <><Wand2 className="w-3 h-3 mr-1" />一键生成全部</>}
             </Button>
-          </div>
+          )}
         </div>
+        <p className="text-xs" style={{ color: S.dim }}>
+          由 Gemini AI 基于剧本分析生成 · 竖版 2:3 · 全身正面站姿 · 深灰渐变背景 · 直接输入 MJ7 使用
+        </p>
 
-        <div className="mb-4 p-2.5 rounded text-xs flex items-center gap-2"
-          style={{ background: "oklch(0.20 0.015 65 / 0.3)", border: "1px solid oklch(0.75 0.17 65 / 0.25)" }}>
-          <span style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>工具：MJ7</span>
-          <span style={{ color: "oklch(0.55 0.01 240)" }}>— 用于探索人物/机甲风格参考图。机甲角色自动识别，提示词模板不同。</span>
-        </div>
-
-        {characters.length === 0 && (
-          <div className="text-center py-8 rounded"
-            style={{ border: "1px dashed oklch(0.28 0.008 240)", color: "oklch(0.45 0.008 240)" }}>
-            <p className="text-sm">从剧本解析后自动填充，或手动添加角色/机甲</p>
+        {characters.length === 0 ? (
+          <div className="p-8 text-center rounded" style={S.card}>
+            <p className="text-sm" style={{ color: S.dim }}>请先在阶段一完成剧本解析，系统将自动提取人物信息</p>
           </div>
-        )}
+        ) : (
+          <div className="space-y-4">
+            {characters.map(char => (
+              <div key={char.id} className="p-4 space-y-4" style={S.card}>
+                {/* Character header */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {char.isMecha
+                      ? <Bot className="w-4 h-4 flex-shrink-0" style={{ color: "oklch(0.60 0.18 240)" }} />
+                      : <User className="w-4 h-4 flex-shrink-0" style={{ color: S.amber }} />
+                    }
+                    <span className="font-bold text-base" style={{ color: S.text, fontFamily: "'Space Grotesk', sans-serif" }}>{char.name}</span>
+                    {char.isMecha && (
+                      <Badge className="text-xs px-1.5 py-0" style={{ background: "oklch(0.55 0.18 240 / 0.15)", border: "1px solid oklch(0.55 0.18 240 / 0.4)", color: "oklch(0.65 0.18 240)" }}>机甲</Badge>
+                    )}
+                    {char.role && (
+                      <Badge className="text-xs px-1.5 py-0" style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.30 0.008 240)", color: S.dim }}>{char.role}</Badge>
+                    )}
+                  </div>
+                  <Button size="sm" onClick={() => handleGenerateChar(char.id)}
+                    disabled={generatingId === char.id || generatingAll}
+                    style={{ background: "oklch(0.75 0.17 65 / 0.12)", border: "1px solid oklch(0.75 0.17 65 / 0.35)", color: S.amber, flexShrink: 0 }}>
+                    {generatingId === char.id
+                      ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</>
+                      : <><Wand2 className="w-3 h-3 mr-1" />生成提示词</>
+                    }
+                  </Button>
+                </div>
 
-        <div className="space-y-4">
-          {characters.map((char, idx) => (
-            <div key={char.id} className="rounded overflow-hidden"
-              style={{ border: "1px solid oklch(0.28 0.008 240)" }}>
-              <div className="flex items-center justify-between px-4 py-2.5"
-                style={{ background: "oklch(0.15 0.006 240)", borderBottom: "1px solid oklch(0.28 0.008 240)" }}>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold" style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace" }}>
-                    {char.isMecha ? "MECHA" : "CHAR"}_{String(idx + 1).padStart(2, "0")} · {char.name || "未命名"}
-                  </span>
-                  {char.isMecha && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-widest"
-                      style={{ background: "oklch(0.55 0.2 280 / 0.2)", border: "1px solid oklch(0.55 0.2 280 / 0.5)", color: "oklch(0.70 0.18 280)", fontFamily: "'JetBrains Mono', monospace" }}>
-                      机甲
-                    </span>
-                  )}
-                  <label className="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" checked={char.isMecha} onChange={e => updateCharacter(char.id, { isMecha: e.target.checked })}
-                      className="w-3 h-3 accent-amber-400" />
-                    <span className="text-[9px]" style={{ color: "oklch(0.50 0.01 240)" }}>机甲</span>
-                  </label>
-                </div>
-                <button onClick={() => removeCharacter(char.id)} className="p-1 rounded hover:bg-red-500/10">
-                  <Trash2 className="w-3.5 h-3.5" style={{ color: "oklch(0.55 0.2 25)" }} />
-                </button>
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { key: "name", label: "角色名", placeholder: "如：林枫" },
-                    { key: "role", label: "角色定位", placeholder: "如：男主角，热血少年" },
-                    { key: "appearance", label: "核心外貌", placeholder: "如：白发红瞳，刀疤左眼" },
-                    { key: "costume", label: "服装描述", placeholder: "如：黑色战袍，金色腰带" },
-                    { key: "marks", label: "特殊标记/道具", placeholder: "如：左手玄铁剑，额头印记" },
-                  ].map(({ key, label, placeholder }) => (
-                    <div key={key} className={key === "appearance" || key === "costume" ? "col-span-2" : ""}>
-                      <Label className="text-xs mb-1.5 block" style={{ color: "oklch(0.65 0.01 240)" }}>{label}</Label>
-                      <Input value={String(char[key as keyof typeof char] ?? "")} onChange={e => updateCharacter(char.id, { [key]: e.target.value })}
-                        placeholder={placeholder} className="text-xs h-8"
-                        style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
-                    </div>
-                  ))}
-                </div>
-                <Button onClick={() => handleGenerateChar(char.id)} size="sm"
-                  className="flex items-center gap-2 text-xs"
-                  style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
-                  <Wand2 className="w-3.5 h-3.5" />
-                  生成 MJ7 提示词
-                </Button>
-                {(generatedPrompts[char.id] || (char.promptZh && char.promptEn)) && (
-                  <div className="space-y-2">
-                    <PromptBox label={`中文提示词 · MJ7 · ${char.isMecha ? "机甲模板" : "人物模板"}`} content={generatedPrompts[char.id]?.zh || char.promptZh} lang="zh" />
-                    <PromptBox label={`English Prompt · MJ7 · ${char.isMecha ? "Mecha Template" : "Character Template"}`} content={generatedPrompts[char.id]?.en || char.promptEn} lang="en" />
+                {/* AI-extracted details */}
+                {(char.appearance || char.costume) && (
+                  <div className="grid grid-cols-1 gap-2 text-xs" style={{ color: S.sub }}>
+                    {char.appearance && (
+                      <div className="flex gap-2">
+                        <span className="flex-shrink-0" style={{ color: S.dim, fontFamily: "'JetBrains Mono', monospace" }}>外貌</span>
+                        <span>{char.appearance}</span>
+                      </div>
+                    )}
+                    {char.costume && (
+                      <div className="flex gap-2">
+                        <span className="flex-shrink-0" style={{ color: S.dim, fontFamily: "'JetBrains Mono', monospace" }}>服装</span>
+                        <span>{char.costume}</span>
+                      </div>
+                    )}
+                    {char.marks && (
+                      <div className="flex gap-2">
+                        <span className="flex-shrink-0" style={{ color: S.dim, fontFamily: "'JetBrains Mono', monospace" }}>标记</span>
+                        <span>{char.marks}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Generated prompt */}
+                {char.promptZh && char.promptEn ? (
+                  <PromptBlock label="MJ7 提示词（竖版 2:3 单张参考图）" zh={char.promptZh} en={char.promptEn} />
+                ) : (
+                  <div className="p-3 rounded text-xs text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)", color: S.dim }}>
+                    点击「生成提示词」，Gemini AI 将基于角色信息生成专属 MJ7 提示词
                   </div>
                 )}
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── SECTION C: Per-Episode Scene & Prop Assets ── */}
-      <section>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold flex items-center gap-2"
-            style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            <span className="px-2 py-0.5 rounded text-[10px]"
-              style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)" }}>B</span>
-            分集场景 & 道具资产提示词（按集管理）
-          </h3>
-        </div>
-        <div className="mb-4 p-2.5 rounded text-xs flex items-center gap-2"
-          style={{ background: "oklch(0.20 0.015 65 / 0.3)", border: "1px solid oklch(0.75 0.17 65 / 0.25)" }}>
-          <span style={{ color: "oklch(0.75 0.17 65)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>工具：MJ7</span>
-          <span style={{ color: "oklch(0.55 0.01 240)" }}>— 场景多角度参考图 / 道具展示图。人物不在此列，见上方 A 区。</span>
-        </div>
-
-        {episodes.length === 0 ? (
-          <div className="text-center py-8 rounded"
-            style={{ border: "1px dashed oklch(0.28 0.008 240)", color: "oklch(0.45 0.008 240)" }}>
-            <p className="text-sm">请先在阶段一完成剧本解析</p>
+            ))}
           </div>
-        ) : (
-          <Tabs value={activeEpTab} onValueChange={setActiveEpTab}>
-            <TabsList className="h-8 flex-wrap gap-1 mb-4" style={{ background: "oklch(0.17 0.006 240)" }}>
-              {episodes.map(ep => (
-                <TabsTrigger key={ep.id} value={ep.id} className="text-xs h-7 px-3"
-                  style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                  EP_{String(ep.number).padStart(2, "0")}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
-            {episodes.map(ep => {
-              const epAssets = episodeAssets.filter(a => a.episodeId === ep.id);
-              const sceneAssets = epAssets.filter(a => a.type === "scene");
-              const propAssets = epAssets.filter(a => a.type === "prop");
-
-              return (
-                <TabsContent key={ep.id} value={ep.id} className="space-y-4 mt-0">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-semibold" style={{ color: "oklch(0.88 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>
-                        {ep.title}
-                      </span>
-                      <span className="text-xs ml-2" style={{ color: "oklch(0.50 0.01 240)" }}>
-                        约 {ep.duration} 分钟 · {ep.characters.join("、") || "无角色"}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button onClick={() => addEpisodeAsset(ep.id, "scene")} size="sm" variant="outline"
-                        className="flex items-center gap-1 text-xs h-7"
-                        style={{ borderColor: "oklch(0.35 0.008 240)", color: "oklch(0.70 0.008 240)", background: "transparent" }}>
-                        <Plus className="w-3 h-3" />
-                        场景
-                      </Button>
-                      <Button onClick={() => addEpisodeAsset(ep.id, "prop")} size="sm" variant="outline"
-                        className="flex items-center gap-1 text-xs h-7"
-                        style={{ borderColor: "oklch(0.35 0.008 240)", color: "oklch(0.70 0.008 240)", background: "transparent" }}>
-                        <Plus className="w-3 h-3" />
-                        道具
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Characters list (names only, no prompts) */}
-                  {ep.characters.length > 0 && (
-                    <div className="p-3 rounded"
-                      style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)" }}>
-                      <p className="text-[10px] font-semibold mb-2 uppercase tracking-widest"
-                        style={{ color: "oklch(0.55 0.01 240)", fontFamily: "'JetBrains Mono', monospace" }}>
-                        本集出场人物（提示词见上方全局人物区）
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ep.characters.map(c => (
-                          <span key={c} className="text-xs px-2 py-0.5 rounded"
-                            style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.75 0.17 65)", border: "1px solid oklch(0.30 0.008 240)" }}>
-                            {c}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Scene assets */}
-                  {sceneAssets.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold mb-2" style={{ color: "oklch(0.65 0.2 145)", fontFamily: "'Space Grotesk', sans-serif" }}>
-                        场景资产
-                      </p>
-                      <div className="space-y-3">
-                        {sceneAssets.map(asset => (
-                          <AssetCard key={asset.id} asset={asset}
-                            onUpdate={(data) => updateEpisodeAsset(asset.id, data)}
-                            onRemove={() => removeEpisodeAsset(asset.id)}
-                            onGenerate={() => handleGenerateAsset(asset.id)}
-                            generatedPrompt={generatedAssetPrompts[asset.id] || asset.promptMJ}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Prop assets */}
-                  {propAssets.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold mb-2" style={{ color: "oklch(0.65 0.18 280)", fontFamily: "'Space Grotesk', sans-serif" }}>
-                        道具资产
-                      </p>
-                      <div className="space-y-3">
-                        {propAssets.map(asset => (
-                          <AssetCard key={asset.id} asset={asset}
-                            onUpdate={(data) => updateEpisodeAsset(asset.id, data)}
-                            onRemove={() => removeEpisodeAsset(asset.id)}
-                            onGenerate={() => handleGenerateAsset(asset.id)}
-                            generatedPrompt={generatedAssetPrompts[asset.id] || asset.promptMJ}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {epAssets.length === 0 && (
-                    <div className="text-center py-6 rounded"
-                      style={{ border: "1px dashed oklch(0.28 0.008 240)", color: "oklch(0.45 0.008 240)" }}>
-                      <p className="text-sm">点击上方按钮添加场景或道具资产</p>
-                    </div>
-                  )}
-                </TabsContent>
-              );
-            })}
-          </Tabs>
         )}
-      </section>
+      </div>
 
-      <div className="flex justify-end pt-2">
-        <Button onClick={handleComplete} className="flex items-center gap-2 px-6"
-          style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
-          <CheckCircle2 className="w-4 h-4" />
-          完成本阶段，进入分镜设计
+      {/* Complete button */}
+      <div className="flex justify-end pt-4 border-t" style={{ borderColor: "oklch(0.22 0.006 240)" }}>
+        <Button onClick={handleComplete} className="gap-2"
+          style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.10 0.005 240)", fontWeight: 700 }}>
+          人物资产完成，进入场景道具
           <ChevronRight className="w-4 h-4" />
         </Button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Asset Card Sub-component ─────────────────────────────────────────────────
-import type { EpisodeAsset } from "@/contexts/ProjectContext";
-
-function AssetCard({ asset, onUpdate, onRemove, onGenerate, generatedPrompt }: {
-  asset: EpisodeAsset;
-  onUpdate: (data: Partial<EpisodeAsset>) => void;
-  onRemove: () => void;
-  onGenerate: () => void;
-  generatedPrompt: string;
-}) {
-  const accentColor = asset.type === "scene" ? "oklch(0.65 0.2 145)" : "oklch(0.65 0.18 280)";
-  return (
-    <div className="rounded overflow-hidden" style={{ border: "1px solid oklch(0.28 0.008 240)" }}>
-      <div className="flex items-center justify-between px-3 py-2"
-        style={{ background: "oklch(0.15 0.006 240)", borderBottom: "1px solid oklch(0.28 0.008 240)" }}>
-        <span className="text-[10px] font-bold uppercase tracking-widest"
-          style={{ color: accentColor, fontFamily: "'JetBrains Mono', monospace" }}>
-          {asset.type === "scene" ? "SCENE" : "PROP"}
-        </span>
-        <button onClick={onRemove} className="p-1 rounded hover:bg-red-500/10">
-          <Trash2 className="w-3 h-3" style={{ color: "oklch(0.55 0.2 25)" }} />
-        </button>
-      </div>
-      <div className="p-3 space-y-2">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <Label className="text-[10px]" style={{ color: "oklch(0.55 0.01 240)" }}>名称</Label>
-            <Input value={asset.name} onChange={e => onUpdate({ name: e.target.value })}
-              className="text-xs h-7" style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-[10px]" style={{ color: "oklch(0.55 0.01 240)" }}>描述</Label>
-            <Input value={asset.description} onChange={e => onUpdate({ description: e.target.value })}
-              className="text-xs h-7" style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
-          </div>
-        </div>
-        <div className="flex gap-2 items-start">
-          <Button onClick={onGenerate} size="sm"
-            className="flex items-center gap-1.5 text-xs flex-shrink-0"
-            style={{ background: "oklch(0.22 0.006 240)", color: accentColor, border: `1px solid ${accentColor}40`, fontFamily: "'Space Grotesk', sans-serif" }}>
-            <Wand2 className="w-3 h-3" />
-            生成 MJ7 提示词
-          </Button>
-        </div>
-        {generatedPrompt && <PromptBox label="MJ7 提示词" content={generatedPrompt} />}
       </div>
     </div>
   );

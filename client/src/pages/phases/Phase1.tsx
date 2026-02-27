@@ -11,10 +11,11 @@ import { CheckCircle2, ChevronRight, AlertTriangle, Upload, FileText, Wand2, Use
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { extractTextFromFile, detectFormat, ACCEPTED_FORMATS, formatLabel } from "@/lib/scriptParser";
+import { trpc } from "@/lib/trpc";
 
 export default function Phase1() {
   const { projectInfo, updateProjectInfo, scriptText, setScriptText,
-    scriptAnalysis, analyzeScript, updateEpisode, markPhaseComplete, setActivePhase } = useProject();
+    scriptAnalysis, analyzeScript, analyzeScriptWithAI, updateEpisode, markPhaseComplete, setActivePhase } = useProject();
   const [selectedStyleIdx, setSelectedStyleIdx] = useState<number | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,14 +56,25 @@ export default function Phase1() {
     if (file) processFile(file);
   };
 
-  const handleAnalyze = () => {
+  const analyzeScriptMutation = trpc.ai.analyzeScript.useMutation();
+
+  const handleAnalyze = async () => {
     if (!scriptText.trim()) { toast.error("请先输入或上传剧本内容"); return; }
     setIsAnalyzing(true);
-    setTimeout(() => {
+    try {
+      const result = await analyzeScriptMutation.mutateAsync({
+        scriptText,
+        styleZh: projectInfo.styleZh,
+      });
+      analyzeScriptWithAI(result);
+      toast.success(`AI 解析完成，共识别 ${result.episodes.length} 集，${result.characters.length} 个角色`);
+    } catch (err) {
+      // 降级到本地规则解析
+      toast.error(`AI 解析失败，使用本地规则解析：${err instanceof Error ? err.message : "未知错误"}`);
       analyzeScript();
+    } finally {
       setIsAnalyzing(false);
-      toast.success(`解析完成，共识别 ${scriptAnalysis.episodes.length || "?"} 集`);
-    }, 600);
+    }
   };
 
   const handleComplete = () => {

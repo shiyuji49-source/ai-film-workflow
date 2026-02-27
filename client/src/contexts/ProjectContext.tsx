@@ -99,6 +99,17 @@ interface ProjectContextType {
 
   setScriptText: (text: string) => void;
   analyzeScript: () => void;
+  analyzeScriptWithAI: (result: {
+    episodes: Array<{
+      id: string; number: number; title: string; duration: number; synopsis: string;
+      scenes: Array<{ name: string; environment: string; timeOfDay: string; atmosphere: string; visualFeatures: string }>;
+      props: Array<{ name: string; appearance: string; material: string; purpose: string }>;
+    }>;
+    characters: Array<{
+      name: string; role: string; isMecha: boolean; appearance: string;
+      costume: string; marks: string; personality: string;
+    }>;
+  }) => void;
   updateEpisode: (id: string, data: Partial<Episode>) => void;
 
   addCharacter: (name?: string) => void;
@@ -471,6 +482,72 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setEpisodeAssets(newAssets);
   }, [scriptText, projectInfo.type]);
 
+  // AI-powered script analysis: accepts structured result from Gemini
+  const analyzeScriptWithAI = useCallback((result: {
+    episodes: Array<{
+      id: string; number: number; title: string; duration: number; synopsis: string;
+      scenes: Array<{ name: string; environment: string; timeOfDay: string; atmosphere: string; visualFeatures: string }>;
+      props: Array<{ name: string; appearance: string; material: string; purpose: string }>;
+    }>;
+    characters: Array<{
+      name: string; role: string; isMecha: boolean; appearance: string;
+      costume: string; marks: string; personality: string;
+    }>;
+  }) => {
+    // Convert AI result to Episode format
+    const episodes: Episode[] = result.episodes.map(ep => ({
+      id: nanoid(),
+      number: ep.number,
+      title: ep.title,
+      duration: ep.duration,
+      synopsis: ep.synopsis,
+      scenes: ep.scenes.map(s => s.name),
+      props: ep.props.map(p => p.name),
+      characters: [],
+    }));
+
+    const analysis: ScriptAnalysis = {
+      episodes,
+      globalCharacters: result.characters.map(c => c.name),
+      isAnalyzed: true,
+    };
+    setScriptAnalysis(analysis);
+    if (episodes.length > 0) setActiveEpisodeId(episodes[0].id);
+
+    // Set characters with AI-extracted details
+    setCharacters(result.characters.map(c => ({
+      id: nanoid(),
+      name: c.name,
+      role: c.role,
+      appearance: c.appearance,
+      costume: c.costume,
+      marks: c.marks,
+      isMecha: c.isMecha,
+      promptZh: "",
+      promptEn: "",
+    })));
+
+    // Set episode assets with rich AI descriptions
+    const newAssets: EpisodeAsset[] = [];
+    result.episodes.forEach((aiEp, idx) => {
+      const ep = episodes[idx];
+      if (!ep) return;
+      aiEp.scenes.forEach(scene => newAssets.push({
+        id: nanoid(), episodeId: ep.id, type: "scene",
+        name: scene.name,
+        description: `${scene.environment}，${scene.timeOfDay}，${scene.atmosphere}，${scene.visualFeatures}`,
+        promptMJ: "",
+      }));
+      aiEp.props.forEach(prop => newAssets.push({
+        id: nanoid(), episodeId: ep.id, type: "prop",
+        name: prop.name,
+        description: `${prop.appearance}，材质：${prop.material}，用途：${prop.purpose}`,
+        promptMJ: "",
+      }));
+    });
+    setEpisodeAssets(newAssets);
+  }, []);
+
   const updateEpisode = useCallback((id: string, data: Partial<Episode>) => {
     setScriptAnalysis(prev => ({ ...prev, episodes: prev.episodes.map(e => e.id === id ? { ...e, ...data } : e) }));
   }, []);
@@ -651,7 +728,7 @@ ${styleTagEn}`;
       characters, episodeAssets, shots, videoSegments,
       activePhase, activeEpisodeId, completedPhases,
       setActivePhase, setActiveEpisodeId, updateProjectInfo,
-      setScriptText, analyzeScript, updateEpisode,
+      setScriptText, analyzeScript, analyzeScriptWithAI, updateEpisode,
       addCharacter, updateCharacter, removeCharacter, generateCharacterPrompt,
       addEpisodeAsset, updateEpisodeAsset, removeEpisodeAsset, generateAssetPromptMJ,
       addShot, updateShot, removeShot, autoGenerateShots,

@@ -166,9 +166,17 @@ export const WORKFLOW_STEPS = [
   {
     id: "phase2",
     number: "02",
-    title: "核心资产设计",
-    subtitle: "Asset Design",
-    desc: "MJ探索风格 → Nanobananapro生成精确的角色主图与三视图。",
+    title: "人物与机甲资产",
+    subtitle: "Character Assets",
+    desc: "Nanobananapro 固定模板 + MJ7 全局人物竖版参考图提示词。",
+    color: "amber",
+  },
+  {
+    id: "phase2b",
+    number: "2B",
+    title: "场景与道具资产",
+    subtitle: "Scene & Prop Assets",
+    desc: "按集分类的 MJ7 场景横版参考图 + 道具展示图提示词。",
     color: "amber",
   },
   {
