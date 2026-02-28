@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, identifier, identifier_type, name, role, credits FROM users WHERE identifier='13772503890';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SELECT id, identifier, identifier_type, name, role, credits FROM users WHERE identifier='13772503890';",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'identifier_type' in 'field list'"
+  ]
+}

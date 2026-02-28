@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE users SET passwordHash='$2b$10$7Kw35nYR4DYNEdDFzyaaCOigu7QkS0e1OG6KDZaZANpcSInjArUse' WHERE identifier='13772503890';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute UPDATE users SET passwordHash='$2b$10$7Kw35nYR4DYNEdDFzyaaCOigu7QkS0e1OG6KDZaZANpcSInjArUse' WHERE identifier='13772503890';",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1633
+}

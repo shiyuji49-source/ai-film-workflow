@@ -331,16 +331,20 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
   }, [cloudProjects, cloudLoading, isCloudMode, activeProjectId]);
 
   // ── Cloud: load full project data when switching ──────────────────────────────
+  // IMPORTANT: Only enable AFTER cloudProjects has loaded and the ID is confirmed valid.
+  // This prevents querying with a stale localStorage ID before the server list is available,
+  // which was causing the "项目不存在" error on every page load.
+  const isActiveIdValidInCloud = !cloudLoading && !!cloudProjects && cloudProjects.some(cp => cp.clientId === activeProjectId);
   const { data: activeCloudProject, error: activeCloudProjectError } = trpc.projects.get.useQuery(
     { clientId: activeProjectId! },
     {
-      enabled: isCloudMode && !!activeProjectId,
+      enabled: isCloudMode && !!activeProjectId && isActiveIdValidInCloud,
       refetchOnWindowFocus: false,
       retry: false,
     }
   );
 
-  // If the active project doesn't exist in cloud (stale local ID), switch to first valid cloud project
+  // Fallback: if somehow an error still occurs (e.g. race condition), switch to first valid project
   useEffect(() => {
     if (!activeCloudProjectError) return;
     const isNotFound = (activeCloudProjectError as { data?: { code?: string } })?.data?.code === 'NOT_FOUND';
