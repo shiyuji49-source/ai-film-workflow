@@ -38,8 +38,15 @@ export interface Character {
   costume: string;       // 服装/装甲描述
   marks: string;         // 特殊标记
   isMecha: boolean;      // 是否为机甲/载具类角色
-  promptZh: string;
-  promptEn: string;
+  promptZh: string;      // MJ7 提示词（中文）
+  promptEn: string;      // MJ7 提示词（英文）
+  nanoPrompt?: string;        // Nano Banana Pro 辅助提示词
+  uploadedImageUrl?: string;  // 上传的 MJ 参考图 URL
+  mainImageUrl?: string;      // Nano 生成的主视图 URL
+  frontImageUrl?: string;     // 正面视图
+  sideImageUrl?: string;      // 侧面视图
+  backImageUrl?: string;      // 背面视图
+  assetLibId?: number;        // 已导入资产库的 ID
 }
 
 export interface EpisodeAsset {
@@ -48,7 +55,14 @@ export interface EpisodeAsset {
   type: "scene" | "prop";
   name: string;
   description: string;
-  promptMJ: string;
+  promptMJ: string;           // MJ7 提示词（JSON {zh,en}）
+  nanoPrompt?: string;        // Nano Banana Pro 辅助提示词
+  uploadedImageUrl?: string;  // 上传的 MJ 参考图 URL
+  mainImageUrl?: string;      // Nano 生成的主视图 URL
+  angle1ImageUrl?: string;    // 四分之三视角
+  angle2ImageUrl?: string;    // 俯视
+  angle3ImageUrl?: string;    // 仰视
+  assetLibId?: number;        // 已导入资产库的 ID
 }
 
 export interface Shot {
