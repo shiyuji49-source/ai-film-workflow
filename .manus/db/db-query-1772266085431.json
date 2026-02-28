@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, clientId, name, userId, createdAt FROM projects WHERE userId = 60002 ORDER BY createdAt DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SELECT id, clientId, name, userId, createdAt FROM projects WHERE userId = 60002 ORDER BY createdAt DESC LIMIT 10;",
+  "rows": [
+    {
+      "id": "1",
+      "clientId": "7qnb9i7",
+      "name": "1",
+      "userId": "60002",
+      "createdAt": "2026-02-28 07:10:03"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tclientId\tname\tuserId\tcreatedAt\n1\t7qnb9i7\t1\t60002\t2026-02-28 07:10:03\n",
+  "stderr": "",
+  "execution_time_ms": 1807
+}

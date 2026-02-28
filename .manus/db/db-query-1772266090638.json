@@ -1,0 +1,14 @@
+{
+  "query": "SELECT clientId, name FROM projects WHERE userId = 60002;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SELECT clientId, name FROM projects WHERE userId = 60002;",
+  "rows": [
+    {
+      "clientId": "7qnb9i7",
+      "name": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "clientId\tname\n7qnb9i7\t1\n",
+  "stderr": "",
+  "execution_time_ms": 1531
+}

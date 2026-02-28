@@ -319,13 +319,25 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
   }, [isAuthenticated]);
 
   // ── Cloud: load full project data when switching ──────────────────────────────
-  const { data: activeCloudProject } = trpc.projects.get.useQuery(
+  const { data: activeCloudProject, error: activeCloudProjectError } = trpc.projects.get.useQuery(
     { clientId: activeProjectId! },
     {
       enabled: isCloudMode && !!activeProjectId,
       refetchOnWindowFocus: false,
+      retry: false,
     }
   );
+
+  // If the active project doesn't exist in cloud (stale local ID), switch to first valid cloud project
+  useEffect(() => {
+    if (!activeCloudProjectError) return;
+    const isNotFound = (activeCloudProjectError as { data?: { code?: string } })?.data?.code === 'NOT_FOUND';
+    if (isNotFound && cloudProjects && cloudProjects.length > 0) {
+      const firstValidId = cloudProjects[0].clientId;
+      setActiveProjectId(firstValidId);
+      setProjects(prev => prev.filter(p => cloudProjects.some(cp => cp.clientId === p.id)));
+    }
+  }, [activeCloudProjectError, cloudProjects]);
 
   useEffect(() => {
     if (!isCloudMode || !activeCloudProject) return;

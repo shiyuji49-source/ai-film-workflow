@@ -50,6 +50,8 @@ export default function AssetsPage() {
   // 生成状态
   const [generatingMain, setGeneratingMain] = useState(false);
   const [generatingView, setGeneratingView] = useState<string | null>(null);
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [editPrompt, setEditPrompt] = useState("");
 
   const utils = trpc.useUtils();
@@ -142,6 +144,42 @@ export default function AssetsPage() {
     if (!selectedAsset || !editPrompt.trim()) { toast.error("请先填写提示词"); return; }
     setGeneratingView(viewType);
     generateMultiMutation.mutate({ id: selectedAsset.id, viewType, prompt: editPrompt.trim() });
+  };
+
+  // 批量生成所有视角图（依次执行，避免并发请求）
+  const handleBatchGenerate = async () => {
+    if (!selectedAsset || !editPrompt.trim()) { toast.error("请先填写提示词"); return; }
+    const currentMultiViews = selectedAsset.multiViewUrls ? JSON.parse(selectedAsset.multiViewUrls) : {};
+    const pendingViews = viewTypes.filter(v => !currentMultiViews[v]);
+    if (pendingViews.length === 0) { toast.info("所有视角图已生成完成！如需重新生成请单张点击重生成按鈕。"); return; }
+    setBatchGenerating(true);
+    setBatchProgress({ current: 0, total: pendingViews.length });
+    let successCount = 0;
+    for (let i = 0; i < pendingViews.length; i++) {
+      const viewType = pendingViews[i];
+      setBatchProgress({ current: i + 1, total: pendingViews.length });
+      setGeneratingView(viewType);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          generateMultiMutation.mutate(
+            { id: selectedAsset.id, viewType, prompt: editPrompt.trim() },
+            {
+              onSuccess: () => { successCount++; resolve(); },
+              onError: (e) => { toast.error(`${VIEW_LABELS[viewType]}生成失败: ${e.message}`); resolve(); },
+            }
+          );
+        });
+        // 等待一下再生成下一张，避免请求过于频繁
+        if (i < pendingViews.length - 1) await new Promise(r => setTimeout(r, 1000));
+      } catch {
+        // ignore, already handled
+      }
+    }
+    setGeneratingView(null);
+    setBatchGenerating(false);
+    setBatchProgress(null);
+    utils.assets.list.invalidate();
+    toast.success(`批量生成完成！成功生成 ${successCount}/${pendingViews.length} 张图片`);
   };
 
   const multiViews = selectedAsset?.multiViewUrls ? JSON.parse(selectedAsset.multiViewUrls) : {};
@@ -355,10 +393,34 @@ export default function AssetsPage() {
 
               {/* 多视角图 */}
               <div className="rounded-xl overflow-hidden" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
-                <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
-                  <span className="text-xs font-medium" style={{ color: TEXT }}>
-                    {activeType === "character" ? "三视图" : "多视角图"}
-                  </span>
+                <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: BORDER }}>
+                  <div>
+                    <span className="text-xs font-medium" style={{ color: TEXT }}>
+                      {activeType === "character" ? "三视图" : "多视角图"}
+                    </span>
+                    {batchProgress && (
+                      <span className="ml-2 text-[10px]" style={{ color: GOLD }}>
+                        生成中 {batchProgress.current}/{batchProgress.total}...
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleBatchGenerate}
+                    disabled={batchGenerating || !editPrompt.trim() || !selectedAsset}
+                    className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg font-medium transition-all"
+                    style={{
+                      background: batchGenerating || !editPrompt.trim() ? "oklch(0.20 0.006 240)" : "oklch(0.60 0.15 200 / 0.15)",
+                      border: `1px solid ${batchGenerating || !editPrompt.trim() ? BORDER : "oklch(0.60 0.15 200 / 0.5)"}`,
+                      color: batchGenerating || !editPrompt.trim() ? MUTED : ACCENT,
+                      cursor: batchGenerating || !editPrompt.trim() ? "not-allowed" : "pointer",
+                    }}
+                    title={`一键生成所有未生成的${activeType === "character" ? "三视图" : "多视角图"}，每张消耗 8 积分`}
+                  >
+                    {batchGenerating
+                      ? <Loader2 size={10} className="animate-spin" />
+                      : <Sparkles size={10} />}
+                    {batchGenerating ? `生成中...` : `一键批量生成`}
+                  </button>
                 </div>
                 <div className="p-4 grid grid-cols-3 gap-3">
                   {viewTypes.map(viewType => {
