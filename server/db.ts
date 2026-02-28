@@ -32,21 +32,14 @@ export async function createUser(data: {
     identifierType: data.identifierType,
     passwordHash: data.passwordHash,
     name: data.name ?? null,
-    credits: 10000,
+    credits: 0,
     lastSignedIn: new Date(),
   });
 
   const result = await db.select().from(users).where(eq(users.identifier, data.identifier)).limit(1);
   if (!result[0]) throw new Error("创建用户失败");
 
-  // 记录注册赠送积分流水
-  await db.insert(creditLogs).values({
-    userId: result[0].id,
-    delta: 10000,
-    balance: 10000,
-    action: "register_bonus",
-    note: "注册赠送初始积分",
-  });
+  // 普通注册不赠送积分，使用邀请码注册时在 auth.ts 中另行赠送
 
   return result[0];
 }
@@ -370,4 +363,26 @@ export async function deleteInviteCode(id: number) {
   const db = await getDb();
   if (!db) throw new Error("数据库不可用");
   await db.delete(inviteCodes).where(eq(inviteCodes.id, id));
+}
+
+/** 邀请码注册赠送积分（记录 register_bonus 流水） */
+export async function grantInviteBonus(userId: number, amount: number): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("数据库不可用");
+
+  const userResult = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const user = userResult[0];
+  if (!user) throw new Error("用户不存在");
+
+  const newBalance = user.credits + amount;
+  await db.update(users).set({ credits: newBalance }).where(eq(users.id, userId));
+  await db.insert(creditLogs).values({
+    userId,
+    delta: amount,
+    balance: newBalance,
+    action: "register_bonus",
+    note: `邀请码注册赠送 ${amount} 积分`,
+  });
+
+  return newBalance;
 }

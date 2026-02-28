@@ -65,9 +65,20 @@ export const authRouter = router({
         name: input.name,
       });
 
-      // 标记邀请码已使用
-      if (REQUIRE_INVITE && input.inviteCode) {
-        await db.useInviteCode(input.inviteCode.trim().toUpperCase(), user.id);
+      // 如果提供了邀请码，标记已使用并赠送 3000 积分
+      if (input.inviteCode) {
+        const invCode = input.inviteCode.trim().toUpperCase();
+        // 非强制模式下也需验证邀请码有效性
+        if (!REQUIRE_INVITE) {
+          const inv = await db.getInviteCodeByCode(invCode);
+          if (inv && inv.useCount < inv.maxUses && !(inv.expiresAt && Date.now() > inv.expiresAt)) {
+            await db.useInviteCode(invCode, user.id);
+            await db.grantInviteBonus(user.id, 3000);
+          }
+        } else {
+          await db.useInviteCode(invCode, user.id);
+          await db.grantInviteBonus(user.id, 3000);
+        }
       }
 
       // 自动登录：创建 session
