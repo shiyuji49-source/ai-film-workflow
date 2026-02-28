@@ -650,13 +650,26 @@ export default function AdminPage() {
                               {new Date(inv.createdAt).toLocaleDateString("zh-CN")}
                             </TableCell>
                             <TableCell>
-                              <button
-                                onClick={() => deleteInviteMutation.mutate({ id: inv.id })}
-                                className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
-                                style={{ color: "oklch(0.60 0.15 30)", border: "1px solid oklch(0.60 0.15 30 / 0.4)", background: "transparent" }}
-                              >
-                                删除
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    const url = `${window.location.origin}/auth?invite=${inv.code}`;
+                                    navigator.clipboard.writeText(url);
+                                    toast.success("分享链接已复制");
+                                  }}
+                                  className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
+                                  style={{ color: "oklch(0.75 0.17 65)", border: "1px solid oklch(0.75 0.17 65 / 0.4)", background: "transparent" }}
+                                >
+                                  复制链接
+                                </button>
+                                <button
+                                  onClick={() => deleteInviteMutation.mutate({ id: inv.id })}
+                                  className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
+                                  style={{ color: "oklch(0.60 0.15 30)", border: "1px solid oklch(0.60 0.15 30 / 0.4)", background: "transparent" }}
+                                >
+                                  删除
+                                </button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );

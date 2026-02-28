@@ -1,6 +1,6 @@
 // 鎏光机 - 登录/注册页面
 // 工业风暗色系，与整体设计保持一致
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clapperboard, Eye, EyeOff, Loader2, User, Lock, Phone, Key } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -19,6 +19,16 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
 
+  // 从 URL 参数 ?invite=XXXXXX 自动填入邀请码
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inv = params.get("invite");
+    if (inv) {
+      setInviteCode(inv.trim().toUpperCase());
+      setMode("register"); // 有邀请码时自动切换到注册 Tab
+    }
+  }, []);
+
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: () => {
       toast.success("登录成功，欢迎回来！");
@@ -30,8 +40,13 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
   });
 
   const registerMutation = trpc.auth.register.useMutation({
-    onSuccess: () => {
-      toast.success("注册成功！已获赠 10,000 积分");
+    onSuccess: (data) => {
+      const credits = data.credits ?? 0;
+      if (credits > 0) {
+        toast.success(`注册成功！邀请码奉上，已获赠 ${credits.toLocaleString()} 积分`);
+      } else {
+        toast.success("注册成功！欢迎加入鹯光机");
+      }
       onSuccess();
     },
     onError: (err) => {
@@ -260,6 +275,14 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
                       onBlur={e => (e.target.style.borderColor = BORDER)}
                     />
                   </div>
+                  {/* 邀请码积分提示 */}
+                  <p className="mt-1.5 text-xs flex items-center gap-1" style={{ color: inviteCode ? GOLD : MUTED }}>
+                    <span style={{ fontSize: 10 }}>★</span>
+                    {inviteCode
+                      ? <span>已填写邀请码，注册后将获赠 <strong style={{ color: GOLD }}>3,000</strong> 积分</span>
+                      : <span>填写邀请码可获得 <strong style={{ color: GOLD }}>3,000</strong> 积分奖励</span>
+                    }
+                  </p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -313,14 +336,14 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
               }}
             >
               {isLoading && <Loader2 size={14} className="animate-spin" />}
-              {mode === "login" ? "登录" : "注册并获赠 10,000 积分"}
+              {mode === "login" ? "登录" : "立即注册"}
             </button>
           </form>
 
           {/* Register bonus hint */}
           {mode === "register" && (
             <p className="text-center text-xs mt-4" style={{ color: MUTED }}>
-              注册即获赠 <span style={{ color: GOLD, fontWeight: 700 }}>10,000</span> 初始积分
+              内测阶段，使用邀请码注册可获赠 <span style={{ color: GOLD, fontWeight: 700 }}>3,000</span> 积分
             </p>
           )}
         </div>
