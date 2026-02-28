@@ -159,11 +159,6 @@ export default function Phase1() {
           <input ref={fileInputRef} type="file" accept={ACCEPTED_FORMATS} className="hidden" onChange={handleFileUpload} />
         </div>
 
-        <Textarea value={scriptText} onChange={e => setScriptText(e.target.value)}
-          placeholder={`在此粘贴剧本内容...\n\n支持多集格式，例如：\n第1集 标题\n剧情内容...\n\n第2集 标题\n剧情内容...`}
-          rows={8} className="text-xs resize-none mb-3"
-          style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.85 0.005 60)", fontFamily: "'JetBrains Mono', monospace" }} />
-
         <Button onClick={handleAnalyze} disabled={isAnalyzing || !scriptText.trim()}
           className="flex items-center gap-2"
           style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
