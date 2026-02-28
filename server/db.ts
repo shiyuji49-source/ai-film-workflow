@@ -1,6 +1,6 @@
 import { eq, and, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { users, projects, creditLogs, inviteCodes, type User, type InsertUser, type Project, type InsertProject, type InsertCreditLog } from "../drizzle/schema";
+import { users, projects, creditLogs, inviteCodes, assets, type User, type InsertUser, type Project, type InsertProject, type InsertCreditLog, type Asset } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -385,4 +385,74 @@ export async function grantInviteBonus(userId: number, amount: number): Promise<
   });
 
   return newBalance;
+}
+
+// ─── 资产库 ───────────────────────────────────────────────────────────────────
+
+export async function getUserAssets(userId: number, type?: "character" | "scene"): Promise<Asset[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const query = db.select().from(assets).where(
+    type
+      ? and(eq(assets.userId, userId), eq(assets.isDeleted, false), eq(assets.type, type))
+      : and(eq(assets.userId, userId), eq(assets.isDeleted, false))
+  );
+  return query.orderBy(desc(assets.createdAt));
+}
+
+export async function getAssetById(id: number, userId: number): Promise<Asset | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(assets)
+    .where(and(eq(assets.id, id), eq(assets.userId, userId), eq(assets.isDeleted, false)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function createAsset(data: {
+  userId: number;
+  projectId?: number;
+  type: "character" | "scene";
+  name: string;
+  description?: string;
+  mainPrompt?: string;
+}): Promise<Asset> {
+  const db = await getDb();
+  if (!db) throw new Error("数据库不可用");
+  await db.insert(assets).values({
+    userId: data.userId,
+    projectId: data.projectId ?? null,
+    type: data.type,
+    name: data.name,
+    description: data.description ?? null,
+    mainPrompt: data.mainPrompt ?? null,
+    status: "draft",
+    isDeleted: false,
+  });
+  const result = await db.select().from(assets)
+    .where(and(eq(assets.userId, data.userId), eq(assets.isDeleted, false)))
+    .orderBy(desc(assets.createdAt))
+    .limit(1);
+  if (!result[0]) throw new Error("创建资产失败");
+  return result[0];
+}
+
+export async function updateAsset(id: number, userId: number, data: Partial<{
+  name: string;
+  description: string;
+  mainPrompt: string;
+  mainImageUrl: string;
+  multiViewUrls: string;
+  generationModel: string;
+  status: "draft" | "generating" | "done" | "failed";
+}>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("数据库不可用");
+  await db.update(assets).set(data).where(and(eq(assets.id, id), eq(assets.userId, userId)));
+}
+
+export async function softDeleteAsset(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("数据库不可用");
+  await db.update(assets).set({ isDeleted: true }).where(and(eq(assets.id, id), eq(assets.userId, userId)));
 }

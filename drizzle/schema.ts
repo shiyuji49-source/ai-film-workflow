@@ -116,8 +116,37 @@ export const teams = mysqlTable("teams", {
   ownerId: int("ownerId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+// ─── 资产库表 ─────────────────────────────────────────────────────────────────
+export const assets = mysqlTable("assets", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  /** 关联项目（可选） */
+  projectId: int("projectId"),
+  /** 资产类型 */
+  type: mysqlEnum("type", ["character", "scene"]).notNull(),
+  /** 资产名称 */
+  name: varchar("name", { length: 128 }).notNull(),
+  /** 资产描述（中文） */
+  description: text("description"),
+  /** 主图生成提示词 */
+  mainPrompt: text("mainPrompt"),
+  /** 主图 URL（S3） */
+  mainImageUrl: text("mainImageUrl"),
+  /** 三视图 / 多视角图 URLs（JSON 数组字符串） */
+  multiViewUrls: text("multiViewUrls"),
+  /** 使用的生成模型 */
+  generationModel: varchar("generationModel", { length: 64 }),
+  /** 生成状态 */
+  status: mysqlEnum("status", ["draft", "generating", "done", "failed"]).default("draft").notNull(),
+  isDeleted: boolean("isDeleted").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
-// ─── 团队成员表（预留）──────────────────────────────────────────────────────
+export type Asset = typeof assets.$inferSelect;
+export type InsertAsset = typeof assets.$inferInsert;
+
+// ─── 团队成员表（预留）──────────────────────────────────────────────
 export const teamMembers = mysqlTable("teamMembers", {
   id: int("id").autoincrement().primaryKey(),
   teamId: int("teamId").notNull(),
