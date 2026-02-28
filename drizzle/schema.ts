@@ -128,9 +128,13 @@ export const assets = mysqlTable("assets", {
   name: varchar("name", { length: 128 }).notNull(),
   /** 资产描述（中文） */
   description: text("description"),
-  /** 主图生成提示词 */
+  /** MJ7 生成提示词（用户在 MJ 中生成图片的提示词） */
+  mjPrompt: text("mjPrompt"),
+  /** Nano Banana Pro 提示词（基于上传图生成视图的辅助提示词） */
   mainPrompt: text("mainPrompt"),
-  /** 主图 URL（S3） */
+  /** 用户上传的 MJ 原图 URL（S3） */
+  uploadedImageUrl: text("uploadedImageUrl"),
+  /** 主视图 URL（由 Nano Banana Pro 生成） */
   mainImageUrl: text("mainImageUrl"),
   /** 三视图 / 多视角图 URLs（JSON 数组字符串） */
   multiViewUrls: text("multiViewUrls"),

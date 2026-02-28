@@ -318,6 +318,18 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
     }
   }, [isAuthenticated]);
 
+  // Extra guard: once cloudProjects loads, if activeProjectId is stale, switch immediately
+  useEffect(() => {
+    if (!isCloudMode || cloudLoading || !cloudProjects) return;
+    if (!activeProjectId) return;
+    const isValid = cloudProjects.some(cp => cp.clientId === activeProjectId);
+    if (!isValid && cloudProjects.length > 0) {
+      setActiveProjectId(cloudProjects[0].clientId);
+    } else if (!isValid && cloudProjects.length === 0) {
+      setActiveProjectId(null);
+    }
+  }, [cloudProjects, cloudLoading, isCloudMode, activeProjectId]);
+
   // ── Cloud: load full project data when switching ──────────────────────────────
   const { data: activeCloudProject, error: activeCloudProjectError } = trpc.projects.get.useQuery(
     { clientId: activeProjectId! },

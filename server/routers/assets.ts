@@ -14,9 +14,28 @@ import { nanoid } from "nanoid";
 
 // 积分消耗配置
 const CREDITS = {
-  generateMain: 10,    // 生成主图
+  generateMain: 10,    // 生成主视图
   generateMulti: 8,    // 生成三视图/多视角（每张）
 };
+
+// 通用扣积分函数
+async function deductCredits(userId: number, currentCredits: number, amount: number, note: string) {
+  const { getDb } = await import("../db");
+  const { users, creditLogs } = await import("../../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) return currentCredits;
+  const newCredits = currentCredits - amount;
+  await db.update(users).set({ credits: newCredits }).where(eq(users.id, userId));
+  await db.insert(creditLogs).values({
+    userId,
+    delta: -amount,
+    balance: newCredits,
+    action: "generate_prompt",
+    note,
+  });
+  return newCredits;
+}
 
 export const assetsRouter = router({
   // 获取资产列表
@@ -41,6 +60,7 @@ export const assetsRouter = router({
       type: z.enum(["character", "scene"]),
       name: z.string().min(1).max(128),
       description: z.string().optional(),
+      mjPrompt: z.string().optional(),
       mainPrompt: z.string().optional(),
       projectId: z.number().optional(),
     }))
@@ -50,17 +70,19 @@ export const assetsRouter = router({
         type: input.type,
         name: input.name,
         description: input.description,
+        mjPrompt: input.mjPrompt,
         mainPrompt: input.mainPrompt,
         projectId: input.projectId,
       });
     }),
 
-  // 更新资产基本信息
+  // 更新资产基本信息（包含提示词）
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
       name: z.string().min(1).max(128).optional(),
       description: z.string().optional(),
+      mjPrompt: z.string().optional(),
       mainPrompt: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -69,6 +91,7 @@ export const assetsRouter = router({
       await updateAsset(input.id, ctx.user.id, {
         ...(input.name && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
+        ...(input.mjPrompt !== undefined && { mjPrompt: input.mjPrompt }),
         ...(input.mainPrompt !== undefined && { mainPrompt: input.mainPrompt }),
       });
       return { success: true };
@@ -84,102 +107,133 @@ export const assetsRouter = router({
       return { success: true };
     }),
 
-  // 生成主图
-  generateMain: protectedProcedure
+  // 上传 MJ 原图到 S3（前端 base64 → 后端上传）
+  uploadImage: protectedProcedure
     .input(z.object({
       id: z.number(),
-      prompt: z.string().min(1),
+      // base64 编码的图片数据（不含 data:image/xxx;base64, 前缀）
+      imageBase64: z.string().min(1),
+      mimeType: z.string().default("image/png"),
     }))
     .mutation(async ({ ctx, input }) => {
       const asset = await getAssetById(input.id, ctx.user.id);
       if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
 
-      // 检查积分
-      if (ctx.user.credits < CREDITS.generateMain) {
-        throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成主图需要 ${CREDITS.generateMain} 积分` });
+      try {
+        const imgBuffer = Buffer.from(input.imageBase64, "base64");
+        // 限制 16MB
+        if (imgBuffer.length > 16 * 1024 * 1024) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "图片大小不能超过 16MB" });
+        }
+        const ext = input.mimeType.split("/")[1] ?? "png";
+        const fileKey = `assets/${ctx.user.id}/${input.id}-upload-${nanoid(8)}.${ext}`;
+        const { url: s3Url } = await storagePut(fileKey, imgBuffer, input.mimeType);
+
+        // 保存上传图 URL
+        await updateAsset(input.id, ctx.user.id, { uploadedImageUrl: s3Url });
+        return { success: true, uploadedImageUrl: s3Url };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片上传失败，请重试" });
+      }
+    }),
+
+  // 基于上传图生成主视图（Nano Banana Pro 图生图）
+  generateMain: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      prompt: z.string().optional(),  // 辅助提示词（可选）
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const asset = await getAssetById(input.id, ctx.user.id);
+      if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
+      if (!asset.uploadedImageUrl) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "请先上传 MJ 参考图" });
       }
 
-      // 标记生成中
-      await updateAsset(input.id, ctx.user.id, { status: "generating", mainPrompt: input.prompt });
+      if (ctx.user.credits < CREDITS.generateMain) {
+        throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成主视图需要 ${CREDITS.generateMain} 积分` });
+      }
+
+      await updateAsset(input.id, ctx.user.id, { status: "generating" });
 
       try {
-        // 调用 Nano Banana Pro（Gemini Image）
-        const typeLabel = asset.type === "character" ? "character concept art" : "scene concept art";
-        const fullPrompt = `${typeLabel}, ${input.prompt}, high quality, detailed, professional illustration, 4K`;
+        const typeLabel = asset.type === "character" ? "character, front view, full body" : "scene, establishing shot";
+        const promptText = input.prompt
+          ? `${typeLabel}, ${input.prompt}, maintain exact same style and appearance as reference, high quality, 4K`
+          : `${typeLabel}, maintain exact same style and appearance as reference, high quality, 4K`;
 
-        const genResult = await generateImage({ prompt: fullPrompt });
+        // 使用图生图模式：传入参考图
+        const genResult = await generateImage({
+          prompt: promptText,
+          originalImages: [{ url: asset.uploadedImageUrl, mimeType: "image/jpeg" }],
+        });
         if (!genResult.url) throw new Error("图片生成返回空URL");
-        const generatedUrl = genResult.url;
 
         // 下载并上传到 S3
-        const imgResp = await fetch(generatedUrl);
+        const imgResp = await fetch(genResult.url);
         const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
         const fileKey = `assets/${ctx.user.id}/${input.id}-main-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, imgBuffer, "image/png");
 
-        // 扣除积分
-        const { getDb } = await import("../db");
-        const { users, creditLogs } = await import("../../drizzle/schema");
-        const { eq } = await import("drizzle-orm");
-        const db = await getDb();
-        if (db) {
-          const newCredits = ctx.user.credits - CREDITS.generateMain;
-          await db.update(users).set({ credits: newCredits }).where(eq(users.id, ctx.user.id));
-          await db.insert(creditLogs).values({
-            userId: ctx.user.id,
-            delta: -CREDITS.generateMain,
-            balance: newCredits,
-            action: "generate_prompt",
-            note: `生成资产主图: ${asset.name}`,
-          });
-        }
+        // 扣积分
+        await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateMain, `生成资产主视图: ${asset.name}`);
 
         // 更新资产
         await updateAsset(input.id, ctx.user.id, {
           mainImageUrl: s3Url,
           generationModel: "nano-banana-pro",
           status: "done",
+          ...(input.prompt && { mainPrompt: input.prompt }),
         });
 
         return { success: true, imageUrl: s3Url };
       } catch (err) {
         await updateAsset(input.id, ctx.user.id, { status: "failed" });
+        if (err instanceof TRPCError) throw err;
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片生成失败，请重试" });
       }
     }),
 
-  // 生成三视图/多视角图
+  // 基于上传图生成三视图/多视角图
   generateMultiView: protectedProcedure
     .input(z.object({
       id: z.number(),
       viewType: z.enum(["front", "side", "back", "angle1", "angle2", "angle3"]),
-      prompt: z.string().min(1),
+      prompt: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const asset = await getAssetById(input.id, ctx.user.id);
       if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
+      if (!asset.uploadedImageUrl) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "请先上传 MJ 参考图" });
+      }
 
       if (ctx.user.credits < CREDITS.generateMulti) {
         throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成多视角图需要 ${CREDITS.generateMulti} 积分` });
       }
 
       const viewLabels: Record<string, string> = {
-        front: "front view",
-        side: "side view",
-        back: "back view",
-        angle1: "three-quarter view",
-        angle2: "bird eye view",
-        angle3: "worm eye view",
+        front: "front view, facing camera directly",
+        side: "side profile view, 90 degrees",
+        back: "back view, rear facing",
+        angle1: "three-quarter view, 45 degrees",
+        angle2: "bird eye view, top-down angle",
+        angle3: "worm eye view, low angle looking up",
       };
 
-      const typeLabel = asset.type === "character" ? "character concept art" : "scene concept art";
-      const fullPrompt = `${typeLabel}, ${viewLabels[input.viewType]}, ${input.prompt}, consistent style, high quality, 4K`;
+      const typeLabel = asset.type === "character" ? "character concept art, full body" : "scene concept art";
+      const basePrompt = input.prompt ?? asset.mainPrompt ?? "";
+      const fullPrompt = `${typeLabel}, ${viewLabels[input.viewType]}, ${basePrompt ? basePrompt + ", " : ""}maintain exact same style and appearance as reference, consistent design, high quality, 4K`;
 
       try {
-        const genResult2 = await generateImage({ prompt: fullPrompt });
-        if (!genResult2.url) throw new Error("图片生成返回空URL");
-        const generatedUrl = genResult2.url;
-        const imgResp = await fetch(generatedUrl);
+        const genResult = await generateImage({
+          prompt: fullPrompt,
+          originalImages: [{ url: asset.uploadedImageUrl, mimeType: "image/jpeg" }],
+        });
+        if (!genResult.url) throw new Error("图片生成返回空URL");
+
+        const imgResp = await fetch(genResult.url);
         const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
         const fileKey = `assets/${ctx.user.id}/${input.id}-${input.viewType}-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, imgBuffer, "image/png");
@@ -193,24 +247,11 @@ export const assetsRouter = router({
         });
 
         // 扣积分
-        const { getDb } = await import("../db");
-        const { users, creditLogs } = await import("../../drizzle/schema");
-        const { eq } = await import("drizzle-orm");
-        const db = await getDb();
-        if (db) {
-          const newCredits = ctx.user.credits - CREDITS.generateMulti;
-          await db.update(users).set({ credits: newCredits }).where(eq(users.id, ctx.user.id));
-          await db.insert(creditLogs).values({
-            userId: ctx.user.id,
-            delta: -CREDITS.generateMulti,
-            balance: newCredits,
-            action: "generate_prompt",
-            note: `生成资产多视角图(${input.viewType}): ${asset.name}`,
-          });
-        }
+        await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateMulti, `生成资产多视角图(${input.viewType}): ${asset.name}`);
 
         return { success: true, imageUrl: s3Url, viewType: input.viewType };
       } catch (err) {
+        if (err instanceof TRPCError) throw err;
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片生成失败，请重试" });
       }
     }),

@@ -415,6 +415,7 @@ export async function createAsset(data: {
   type: "character" | "scene";
   name: string;
   description?: string;
+  mjPrompt?: string;
   mainPrompt?: string;
 }): Promise<Asset> {
   const db = await getDb();
@@ -425,6 +426,7 @@ export async function createAsset(data: {
     type: data.type,
     name: data.name,
     description: data.description ?? null,
+    mjPrompt: data.mjPrompt ?? null,
     mainPrompt: data.mainPrompt ?? null,
     status: "draft",
     isDeleted: false,
@@ -440,7 +442,9 @@ export async function createAsset(data: {
 export async function updateAsset(id: number, userId: number, data: Partial<{
   name: string;
   description: string;
+  mjPrompt: string;
   mainPrompt: string;
+  uploadedImageUrl: string;
   mainImageUrl: string;
   multiViewUrls: string;
   generationModel: string;
