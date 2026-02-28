@@ -1,0 +1,16 @@
+{
+  "query": "SELECT id, identifier, name, role FROM users WHERE identifier = '13772503890';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SELECT id, identifier, name, role FROM users WHERE identifier = '13772503890';",
+  "rows": [
+    {
+      "id": "60002",
+      "identifier": "13772503890",
+      "name": "姬时雨",
+      "role": "admin"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tidentifier\tname\trole\n60002\t13772503890\t姬时雨\tadmin\n",
+  "stderr": "",
+  "execution_time_ms": 1537
+}

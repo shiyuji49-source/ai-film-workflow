@@ -122,6 +122,23 @@ export default function AdminPage() {
     },
   });
 
+  const createInviteMutation = trpc.admin.createInviteCode.useMutation({
+    onSuccess: (data) => {
+      toast.success(`成功生成 ${data.codes.length} 个邀请码`);
+      setNewCodes(data.codes);
+      refetchInvites();
+    },
+    onError: (err) => toast.error(`生成失败：${err.message}`),
+  });
+
+  const deleteInviteMutation = trpc.admin.deleteInviteCode.useMutation({
+    onSuccess: () => {
+      toast.success("删除成功");
+      refetchInvites();
+    },
+    onError: (err) => toast.error(`删除失败：${err.message}`),
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "oklch(0.13 0.005 240)" }}>
@@ -155,23 +172,6 @@ export default function AdminPage() {
       </div>
     );
   }
-
-  const createInviteMutation = trpc.admin.createInviteCode.useMutation({
-    onSuccess: (data) => {
-      toast.success(`成功生成 ${data.codes.length} 个邀请码`);
-      setNewCodes(data.codes);
-      refetchInvites();
-    },
-    onError: (err) => toast.error(`生成失败：${err.message}`),
-  });
-
-  const deleteInviteMutation = trpc.admin.deleteInviteCode.useMutation({
-    onSuccess: () => {
-      toast.success("删除成功");
-      refetchInvites();
-    },
-    onError: (err) => toast.error(`删除失败：${err.message}`),
-  });
 
   const tabs = [
     { id: "overview", label: "概览", icon: TrendingUp },
