@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import {
   Film, Plus, Trash2, Copy, Download, Share2, Upload,
   FolderOpen, Clock, CheckCircle2, ChevronRight, FileJson,
-  FileText, Layers, Clapperboard, Coins, LogOut,
+  FileText, Layers, Clapperboard, Coins, LogOut, Shield,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import CreditsShopDialog from "@/components/CreditsShopDialog";
@@ -173,6 +173,14 @@ export default function Dashboard({ onOpenProject }: DashboardProps) {
               style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontWeight: 600, gap: 6 }}>
               <Plus size={14} /> 新建项目
             </Button>
+            {user?.role === "admin" && (
+              <Link href="/admin">
+                <Button variant="outline" size="sm"
+                  style={{ borderColor: "oklch(0.75 0.17 65 / 0.5)", color: "oklch(0.75 0.17 65)", background: "oklch(0.75 0.17 65 / 0.08)", gap: 6 }}>
+                  <Shield size={14} /> 管理后台
+                </Button>
+              </Link>
+            )}
             {user && (
               <Button variant="outline" size="sm" onClick={() => logout()}
                 style={{ borderColor: "oklch(0.28 0.008 240)", color: "oklch(0.55 0.01 240)", background: "transparent", gap: 6 }}>
