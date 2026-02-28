@@ -150,7 +150,22 @@ export const assets = mysqlTable("assets", {
 export type Asset = typeof assets.$inferSelect;
 export type InsertAsset = typeof assets.$inferInsert;
 
-// ─── 团队成员表（预留）──────────────────────────────────────────────
+// ─── 资产生成历史表 ─────────────────────────────────
+export const assetHistory = mysqlTable("asset_history", {
+  id: int("id").autoincrement().primaryKey(),
+  assetId: int("asset_id").notNull(),
+  userId: int("user_id").notNull(),
+  /** 图片类型: main | front | back | side | left | right | top | angle1 | angle2 | angle3 */
+  imageType: varchar("image_type", { length: 50 }).notNull(),
+  imageUrl: text("image_url").notNull(),
+  prompt: text("prompt"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+export type AssetHistory = typeof assetHistory.$inferSelect;
+export type InsertAssetHistory = typeof assetHistory.$inferInsert;
+
+// ─── 团队成员表（预留）──────────────────────────────────
 export const teamMembers = mysqlTable("teamMembers", {
   id: int("id").autoincrement().primaryKey(),
   teamId: int("teamId").notNull(),

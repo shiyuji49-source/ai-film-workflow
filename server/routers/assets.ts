@@ -7,6 +7,8 @@ import {
   createAsset,
   updateAsset,
   softDeleteAsset,
+  addAssetHistory,
+  getAssetHistory,
 } from "../db";
 import { generateImage } from "../_core/imageGeneration";
 import { storagePut } from "../storage";
@@ -179,6 +181,15 @@ export const assetsRouter = router({
         // 扣积分
         await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateMain, `生成资产主视图: ${asset.name}`);
 
+        // 保存到历史记录
+        await addAssetHistory({
+          assetId: input.id,
+          userId: ctx.user.id,
+          imageType: "main",
+          imageUrl: s3Url,
+          prompt: promptText,
+        });
+
         // 更新资产
         await updateAsset(input.id, ctx.user.id, {
           mainImageUrl: s3Url,
@@ -238,6 +249,15 @@ export const assetsRouter = router({
         const fileKey = `assets/${ctx.user.id}/${input.id}-${input.viewType}-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, imgBuffer, "image/png");
 
+        // 保存到历史记录
+        await addAssetHistory({
+          assetId: input.id,
+          userId: ctx.user.id,
+          imageType: input.viewType,
+          imageUrl: s3Url,
+          prompt: fullPrompt,
+        });
+
         // 更新 multiViewUrls
         const existing = asset.multiViewUrls ? JSON.parse(asset.multiViewUrls) : {};
         existing[input.viewType] = s3Url;
@@ -254,5 +274,36 @@ export const assetsRouter = router({
         if (err instanceof TRPCError) throw err;
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片生成失败，请重试" });
       }
+    }),
+
+  // 获取资产历史记录
+  getHistory: protectedProcedure
+    .input(z.object({ id: z.number(), imageType: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const asset = await getAssetById(input.id, ctx.user.id);
+      if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
+      return getAssetHistory(input.id, input.imageType);
+    }),
+
+  // 从历史记录中选择一张作为当前版本
+  selectHistoryVersion: protectedProcedure
+    .input(z.object({
+      assetId: z.number(),
+      historyId: z.number(),
+      imageType: z.string(),
+      imageUrl: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const asset = await getAssetById(input.assetId, ctx.user.id);
+      if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
+
+      if (input.imageType === "main") {
+        await updateAsset(input.assetId, ctx.user.id, { mainImageUrl: input.imageUrl });
+      } else {
+        const existing = asset.multiViewUrls ? JSON.parse(asset.multiViewUrls) : {};
+        existing[input.imageType] = input.imageUrl;
+        await updateAsset(input.assetId, ctx.user.id, { multiViewUrls: JSON.stringify(existing) });
+      }
+      return { success: true };
     }),
 });

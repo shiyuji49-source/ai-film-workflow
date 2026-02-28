@@ -109,6 +109,7 @@ export default function AssetsPage() {
   const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState("");
+  const [showHistory, setShowHistory] = useState<{ imageType: string; label: string } | null>(null);
 
   const utils = trpc.useUtils();
   const { data: assets = [], isLoading } = trpc.assets.list.useQuery({ type: activeType });
@@ -143,12 +144,22 @@ export default function AssetsPage() {
   });
 
   const generateMainMutation = trpc.assets.generateMain.useMutation({
-    onSuccess: () => { utils.assets.list.invalidate(); toast.success("主视图生成完成！"); },
+    onSuccess: () => { utils.assets.list.invalidate(); utils.assets.getHistory.invalidate(); toast.success("主视图生成完成！"); },
     onError: (e) => toast.error(e.message),
   });
 
   const generateMultiMutation = trpc.assets.generateMultiView.useMutation({
-    onSuccess: () => utils.assets.list.invalidate(),
+    onSuccess: () => { utils.assets.list.invalidate(); utils.assets.getHistory.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const { data: historyData = [] } = trpc.assets.getHistory.useQuery(
+    { id: selectedId ?? 0, imageType: showHistory?.imageType },
+    { enabled: !!selectedId && !!showHistory }
+  );
+
+  const selectHistoryMutation = trpc.assets.selectHistoryVersion.useMutation({
+    onSuccess: () => { utils.assets.list.invalidate(); toast.success("已切换到该历史版本"); setShowHistory(null); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -224,7 +235,7 @@ export default function AssetsPage() {
       {/* 顶栏 */}
       <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: BORDER, background: "oklch(0.13 0.005 240)" }}>
         <div className="flex items-center gap-4">
-          <Link href="/dashboard">
+          <Link href="/">
             <button className="flex items-center gap-1.5 text-xs hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
               <ArrowLeft size={14} />返回工作台
             </button>
@@ -447,17 +458,26 @@ export default function AssetsPage() {
                         </div>
                       )}
                     </div>
-                    <button onClick={handleGenerateMain}
-                      disabled={!(selectedAsset as any).uploadedImageUrl || generatingMain}
-                      className="w-full mt-2 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
-                      style={{ background: ACCENT, color: "white" }}>
-                      {generatingMain
-                        ? <><Loader2 className="w-3 h-3 animate-spin" />生成中...</>
-                        : selectedAsset.mainImageUrl
-                          ? <><RefreshCw size={12} />重新生成主视图</>
-                          : <><Zap size={12} />生成主视图</>
-                      }
-                    </button>
+                    <div className="flex gap-1.5 mt-2">
+                      <button onClick={handleGenerateMain}
+                        disabled={!(selectedAsset as any).uploadedImageUrl || generatingMain}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+                        style={{ background: ACCENT, color: "white" }}>
+                        {generatingMain
+                          ? <><Loader2 className="w-3 h-3 animate-spin" />生成中...</>
+                          : selectedAsset.mainImageUrl
+                            ? <><RefreshCw size={12} />重新生成</>
+                            : <><Zap size={12} />生成主视图</>
+                        }
+                      </button>
+                      {selectedAsset.mainImageUrl && (
+                        <button onClick={() => setShowHistory({ imageType: "main", label: "主视图" })}
+                          className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs hover:opacity-80 transition-opacity"
+                          style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${BORDER}`, color: MUTED }}>
+                          历史
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -498,7 +518,15 @@ export default function AssetsPage() {
                             </button>
                           )}
                         </div>
-                        <span className="text-[10px] text-center" style={{ color: MUTED }}>{VIEW_LABELS[viewType]}</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px]" style={{ color: MUTED }}>{VIEW_LABELS[viewType]}</span>
+                          {multiViewUrls[viewType] && (
+                            <button onClick={() => setShowHistory({ imageType: viewType, label: VIEW_LABELS[viewType] })}
+                              className="text-[9px] hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
+                              历史
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -508,6 +536,44 @@ export default function AssetsPage() {
           )}
         </div>
       </div>
+
+      {/* ─── 历史记录弹窗 ─────────────────────────────────────────────────── */}
+      {showHistory && selectedAsset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.7)" }}
+          onClick={() => setShowHistory(null)}>
+          <div className="rounded-2xl p-6 w-full max-w-2xl mx-4" style={{ background: "oklch(0.15 0.006 240)", border: `1px solid ${BORDER}` }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold" style={{ color: TEXT }}>{showHistory.label} · 历史版本</h3>
+              <button onClick={() => setShowHistory(null)} className="text-xs hover:opacity-70" style={{ color: MUTED }}>关闭</button>
+            </div>
+            {historyData.length === 0 ? (
+              <p className="text-sm text-center py-8" style={{ color: MUTED }}>暂无历史记录</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                {[...historyData].reverse().map((h) => {
+                  const isCurrentMain = showHistory.imageType === "main" && h.imageUrl === selectedAsset.mainImageUrl;
+                  const mv = selectedAsset.multiViewUrls ? JSON.parse(selectedAsset.multiViewUrls) : {};
+                  const isCurrentView = showHistory.imageType !== "main" && mv[showHistory.imageType] === h.imageUrl;
+                  const isCurrent = isCurrentMain || isCurrentView;
+                  return (
+                    <div key={h.id} className="relative rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                      style={{ border: `2px solid ${isCurrent ? GOLD : BORDER}` }}
+                      onClick={() => !isCurrent && selectHistoryMutation.mutate({ assetId: selectedAsset.id, historyId: h.id, imageType: h.imageType, imageUrl: h.imageUrl })}>
+                      <img src={h.imageUrl} alt="历史版本" className="w-full aspect-square object-cover" />
+                      <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5" style={{ background: "oklch(0 0 0 / 0.7)" }}>
+                        <p className="text-[9px]" style={{ color: isCurrent ? GOLD : "oklch(0.70 0.005 60)" }}>
+                          {isCurrent ? "✓ 当前版本" : new Date(h.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

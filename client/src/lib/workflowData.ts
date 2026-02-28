@@ -51,6 +51,31 @@ export const STYLE_SUBTYPES: StyleSubtype[] = [
     zh: "2D皮克斯动画风格，圆润可爱的角色造型，温暖色调，夸张表情与动作，精细材质细节，4K超清",
     en: "2D Pixar animation style, rounded cute character designs, warm color palette, exaggerated expressions and actions, detailed material textures, 4K ultra HD",
   },
+  {
+    id: "donghua_gufeng", label: "古风仙侠", parentId: "2D",
+    zh: "2D古风仙侠动画风格，飘逸仙气线条，淡雅青绿色调，云雾缭绕意境，传统纹样装饰，仙侠飞行动态，4K超清",
+    en: "2D ancient fantasy animation style, flowing ethereal linework, muted cyan-green palette, misty atmospheric effects, traditional pattern ornaments, xianxia flight dynamics, 4K ultra HD",
+  },
+  {
+    id: "donghua_wuxia", label: "武侠热血", parentId: "2D",
+    zh: "2D武侠热血动画风格，强烈动态线条，高对比冷暖色，爆炸性能量特效，快节奏镜头切换，战斗气势磅礴，4K超清",
+    en: "2D wuxia action animation style, intense dynamic linework, high-contrast warm-cool colors, explosive energy effects, fast-paced cuts, epic battle atmosphere, 4K ultra HD",
+  },
+  {
+    id: "donghua_kehuan", label: "科幻赛博", parentId: "2D",
+    zh: "2D科幻赛博动画风格，机械感线条，荧光霓虹配色，数字界面叠加，未来都市背景，高科技低生活对比，4K超清",
+    en: "2D sci-fi cyber animation style, mechanical linework, fluorescent neon palette, digital UI overlays, futuristic urban backdrop, high-tech low-life contrast, 4K ultra HD",
+  },
+  {
+    id: "donghua_moe", label: "萌系轻松", parentId: "2D",
+    zh: "2D萌系轻松动画风格，圆润Q版角色，柔和马卡龙配色，夸张表情包动作，温馨日常场景，治愈系氛围，4K超清",
+    en: "2D chibi cute animation style, rounded SD characters, soft macaron palette, exaggerated emoji-like expressions, cozy daily scenes, healing atmosphere, 4K ultra HD",
+  },
+  {
+    id: "donghua_heise", label: "暗黑哥特", parentId: "2D",
+    zh: "2D暗黑哥特动画风格，高对比黑白灰主调，血红点缀，锋利尖锐线条，阴郁压抑氛围，恐怖悬疑叙事，4K超清",
+    en: "2D dark gothic animation style, high-contrast black-white-grey tones, blood-red accents, sharp angular linework, gloomy oppressive atmosphere, horror suspense narrative, 4K ultra HD",
+  },
   // ── 3D 小类 ──
   {
     id: "guoman_3d", label: "国漫", parentId: "3D",
@@ -77,6 +102,26 @@ export const STYLE_SUBTYPES: StyleSubtype[] = [
     zh: "3D中国风风格，古典建筑场景，汉服服饰细节，水墨晕染光效，东方神话意境，精细场景建模，4K超清",
     en: "3D Chinese fantasy style, classical architecture, Hanfu costume details, ink-wash lighting effects, Eastern mythological atmosphere, detailed scene modeling, 4K ultra HD",
   },
+  {
+    id: "3d_gufeng", label: "古风仙侠", parentId: "3D",
+    zh: "3D古风仙侠风格，云海仙境场景，飘逸汉服动态，仙气粒子特效，体积云雾渲染，东方神话叙事，电影级光影，4K超清",
+    en: "3D ancient fantasy style, cloud-sea immortal realm, flowing Hanfu dynamics, ethereal particle effects, volumetric cloud rendering, Eastern mythological narrative, cinematic lighting, 4K ultra HD",
+  },
+  {
+    id: "3d_wuxia", label: "武侠热血", parentId: "3D",
+    zh: "3D武侠热血风格，高速动作捕捉，剑气刀光特效，爆炸性能量粒子，动态模糊镜头，史诗战场场景，4K超清",
+    en: "3D wuxia action style, high-speed motion capture, sword aura slash effects, explosive energy particles, motion blur cinematography, epic battlefield scenes, 4K ultra HD",
+  },
+  {
+    id: "3d_heise", label: "暗黑奇幻", parentId: "3D",
+    zh: "3D暗黑奇幻风格，哥特式建筑场景，黑暗魔法特效，骷髅与腐朽质感，低调冷色灯光，压抑恐怖氛围，4K超清",
+    en: "3D dark fantasy style, gothic architecture environments, dark magic effects, skull and decay textures, low-key cool lighting, oppressive horror atmosphere, 4K ultra HD",
+  },
+  {
+    id: "3d_kehuan", label: "硬科幻", parentId: "3D",
+    zh: "3D硬科幻风格，精密机械舰室场景，全息投影界面，太空站与飞船建模，冷白蓝光照明，科技感极强的材质细节，4K超清",
+    en: "3D hard sci-fi style, precision mechanical bridge environments, holographic projection UI, space station and spacecraft modeling, cold white-blue illumination, highly technical material details, 4K ultra HD",
+  },
   // ── 写实 CG 小类 ──
   {
     id: "cg_real", label: "超写实", parentId: "CG",
@@ -88,6 +133,21 @@ export const STYLE_SUBTYPES: StyleSubtype[] = [
     zh: "科幻写实CG渲染，未来感科技场景，金属与玻璃材质精细渲染，全局光照，电影级景深，8K超清",
     en: "Sci-fi realistic CG rendering, futuristic tech environments, detailed metal and glass material rendering, global illumination, cinematic depth of field, 8K ultra HD",
   },
+  {
+    id: "cg_ancient", label: "古风写实", parentId: "CG",
+    zh: "古风写实CG渲染，历史考据服饰与建筑，自然光线氛围，精细织物与木材质感，东方美学构图，8K超清",
+    en: "Ancient Chinese realistic CG rendering, historically accurate costumes and architecture, natural lighting atmosphere, detailed fabric and wood textures, Eastern aesthetic composition, 8K ultra HD",
+  },
+  {
+    id: "cg_fantasy", label: "奇幻写实", parentId: "CG",
+    zh: "奇幻写实CG渲染，魔幻生物与场景，精细皮毛与鳞片质感，魔法粒子光效，史诗级场景规模，8K超清",
+    en: "Fantasy realistic CG rendering, magical creatures and environments, detailed fur and scale textures, magical particle lighting, epic scene scale, 8K ultra HD",
+  },
+  {
+    id: "cg_wuxia", label: "武侠写实", parentId: "CG",
+    zh: "武侠写实CG渲染，高速动作特效，剑气刀光粒子，精细武器与服饰质感，电影级动态模糊，8K超清",
+    en: "Wuxia realistic CG rendering, high-speed action effects, sword aura particle effects, detailed weapon and costume textures, cinematic motion blur, 8K ultra HD",
+  },
   // ── 真人 小类 ──
   {
     id: "live_film", label: "电影质感", parentId: "live",
@@ -98,6 +158,26 @@ export const STYLE_SUBTYPES: StyleSubtype[] = [
     id: "live_scifi", label: "科幻真人", parentId: "live",
     zh: "科幻真人电影质感，未来感场景布景，特效合成质感，冷色调灯光，电影级宽画幅构图，4K超清",
     en: "Sci-fi live-action cinematic quality, futuristic set design, VFX composite look, cool-toned lighting, cinematic widescreen composition, 4K ultra HD",
+  },
+  {
+    id: "live_ancient", label: "古装历史", parentId: "live",
+    zh: "古装历史真人质感，考据服饰与布景，自然光与烛光氛围，胶片色调，史诗宏观场景，4K超清",
+    en: "Period historical live-action quality, authentic costumes and sets, natural and candlelight atmosphere, film color grading, epic wide-angle scenes, 4K ultra HD",
+  },
+  {
+    id: "live_xianxia", label: "仙侠奇幻", parentId: "live",
+    zh: "仙侠奇幻真人质感，特效合成仙境场景，飘逸服饰动态，粒子光效叠加，云雾缭绕氛围，东方神话叙事，4K超清",
+    en: "Xianxia fantasy live-action quality, VFX composite immortal realm, flowing costume dynamics, particle light overlays, misty cloud atmosphere, Eastern mythological narrative, 4K ultra HD",
+  },
+  {
+    id: "live_urban", label: "都市现代", parentId: "live",
+    zh: "都市现代真人质感，城市街景与室内场景，自然日光与人工灯光，写实色调，当代生活叙事，4K超清",
+    en: "Urban modern live-action quality, city streets and interior scenes, natural daylight and artificial lighting, realistic color grading, contemporary life narrative, 4K ultra HD",
+  },
+  {
+    id: "live_horror", label: "恐怖悬疑", parentId: "live",
+    zh: "恐怖悬疑真人质感，阴暗低调布光，高对比阴影，心理压迫感构图，冷色调与失真色彩，4K超清",
+    en: "Horror thriller live-action quality, dark low-key lighting, high-contrast shadows, psychologically oppressive composition, cool-toned and desaturated colors, 4K ultra HD",
   },
 ];
 

@@ -460,3 +460,53 @@ export async function softDeleteAsset(id: number, userId: number): Promise<void>
   if (!db) throw new Error("数据库不可用");
   await db.update(assets).set({ isDeleted: true }).where(and(eq(assets.id, id), eq(assets.userId, userId)));
 }
+
+// ─── 资产历史记录 ──────────────────────────────────────────────────────────────
+
+export async function addAssetHistory(data: {
+  assetId: number;
+  userId: number;
+  imageType: string;
+  imageUrl: string;
+  prompt?: string;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const { assetHistory } = await import("../drizzle/schema");
+  // 保持每个资产每种视角最多 5 条历史
+  const existing = await db
+    .select({ id: assetHistory.id })
+    .from(assetHistory)
+    .where(and(eq(assetHistory.assetId, data.assetId), eq(assetHistory.imageType, data.imageType)))
+    .orderBy(assetHistory.createdAt)
+    .limit(10);
+  if (existing.length >= 5) {
+    // 删除最旧的记录
+    const toDelete = existing.slice(0, existing.length - 4);
+    for (const row of toDelete) {
+      await db.delete(assetHistory).where(eq(assetHistory.id, row.id));
+    }
+  }
+  await db.insert(assetHistory).values({
+    assetId: data.assetId,
+    userId: data.userId,
+    imageType: data.imageType,
+    imageUrl: data.imageUrl,
+    prompt: data.prompt,
+    createdAt: Date.now(),
+  });
+}
+
+export async function getAssetHistory(assetId: number, imageType?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const { assetHistory } = await import("../drizzle/schema");
+  const conditions = imageType
+    ? and(eq(assetHistory.assetId, assetId), eq(assetHistory.imageType, imageType))
+    : eq(assetHistory.assetId, assetId);
+  return db
+    .select()
+    .from(assetHistory)
+    .where(conditions)
+    .orderBy(assetHistory.createdAt);
+}
