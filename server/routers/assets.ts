@@ -211,16 +211,27 @@ export const assetsRouter = router({
 
   // ── 人物资产专用：将4张视角图拼合成 16:9 横版设计主图 ──
   mergeCharacterDesign: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({
+      id: z.number(),
+      // 前端直接传入已生成的视角图 URL，避免数据库竞态导致的数据丢失
+      closeupUrl: z.string().url(),
+      frontUrl: z.string().url(),
+      sideUrl: z.string().url(),
+      backUrl: z.string().url(),
+    }))
     .mutation(async ({ ctx, input }) => {
       const asset = await getAssetById(input.id, ctx.user.id);
       if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
 
-      const views = asset.multiViewUrls ? JSON.parse(asset.multiViewUrls) : {};
-      const missing = (["closeup", "front", "side", "back"] as const).filter(v => !views[v]);
-      if (missing.length > 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: `请先生成所有视角图，缺少：${missing.map(v => ({ closeup: "近景", front: "正视", side: "侧视", back: "背视" }[v])).join("、")}` });
-      }
+      // 使用前端传入的 URL，同时更新数据库中的 multiViewUrls
+      const views = {
+        closeup: input.closeupUrl,
+        front: input.frontUrl,
+        side: input.sideUrl,
+        back: input.backUrl,
+      };
+      // 同步更新数据库中的 multiViewUrls
+      await updateAsset(input.id, ctx.user.id, { multiViewUrls: JSON.stringify(views) });
 
       try {
         const sharp = (await import("sharp")).default;

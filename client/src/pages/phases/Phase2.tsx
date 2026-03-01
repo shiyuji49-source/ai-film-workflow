@@ -288,15 +288,25 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
     }
   };
 
-  // 拼合4张视角图为16:9合图
+  // 拼呈4张视角图为16:9合图
   const handleMerge = async () => {
-    const allViews = char.closeupImageUrl && char.frontImageUrl && char.sideImageUrl && char.backImageUrl;
-    if (!allViews) { toast.error("请先生成全部4张视角图（近景/正视/侧视/背视）"); return; }
+    const { closeupImageUrl, frontImageUrl, sideImageUrl, backImageUrl } = char;
+    if (!closeupImageUrl || !frontImageUrl || !sideImageUrl || !backImageUrl) {
+      toast.error("请先生成全部4张视角图（近景/正视/侧视/背视）");
+      return;
+    }
     if (!isAuthenticated) { toast.error("请先登录后再拼合图片"); return; }
     setMerging(true);
     try {
       const assetId = await getOrCreateAssetId();
-      const result = await mergeDesignMutation.mutateAsync({ id: assetId });
+      // 直接传入前端已有的 URL，避免数据库竞态导致的视角图丢失
+      const result = await mergeDesignMutation.mutateAsync({
+        id: assetId,
+        closeupUrl: closeupImageUrl,
+        frontUrl: frontImageUrl,
+        sideUrl: sideImageUrl,
+        backUrl: backImageUrl,
+      });
       updateCharacter(char.id, { designImageUrl: result.imageUrl, mainImageUrl: result.imageUrl });
       utils.assets.list.invalidate();
       toast.success("16:9 角色设计主图拼合完成！");
