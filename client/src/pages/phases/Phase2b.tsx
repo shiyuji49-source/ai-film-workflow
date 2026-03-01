@@ -197,21 +197,15 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
             )}
           </div>
 
-          {/* STEP 2: 上传 + Nano 提示词 */}
+          {/* STEP 2: 上传 MJ 参考图 */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.55 0.18 290 / 0.15)", border: "1px solid oklch(0.55 0.18 290 / 0.3)", color: S.purple, fontFamily: S.mono }}>STEP 2</span>
-              <span className="text-xs font-semibold" style={{ color: S.purple }}>上传 MJ 参考图 + Nano 辅助提示词</span>
+              <span className="text-xs font-semibold" style={{ color: S.purple }}>上传 MJ 参考图（上传后一键生成）</span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>MJ 参考图</p>
-                <ImageUploadZone imageUrl={asset.uploadedImageUrl} onUpload={handleUpload} uploading={uploading} />
-              </div>
-              <div>
-                <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>Nano 辅助提示词（可选）</p>
-                <Textarea value={asset.nanoPrompt || ""} onChange={e => updateEpisodeAsset(asset.id, { nanoPrompt: e.target.value })} placeholder={`输入 Nano Banana Pro 辅助提示词...\n例如：cinematic lighting, wide angle, atmospheric fog`} rows={5} className="text-xs resize-none" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.85 0.005 60)", fontFamily: S.mono }} />
-              </div>
+            <div>
+              <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>MJ 参考图（用 MJ7 生成后上传，NBP 提示词已预设）</p>
+              <ImageUploadZone imageUrl={asset.uploadedImageUrl} onUpload={handleUpload} uploading={uploading} />
             </div>
           </div>
 

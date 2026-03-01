@@ -37,6 +37,7 @@ export default function Phase1() {
   const [isDragging, setIsDragging] = useState(false);
   const [isFileLoading, setIsFileLoading] = useState(false);
   const [resultsExpanded, setResultsExpanded] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string>("");
 
   const processFile = async (file: File) => {
     setIsFileLoading(true);
@@ -44,6 +45,7 @@ export default function Phase1() {
       const fmt = detectFormat(file);
       const text = await extractTextFromFile(file);
       setScriptText(text);
+      setUploadedFileName(file.name);
       toast.success(`已加载剧本：${file.name}（${formatLabel(fmt)}）`);
     } catch (err) {
       toast.error(`解析失败：${err instanceof Error ? err.message : "未知错误"}`);
@@ -141,12 +143,14 @@ export default function Phase1() {
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}>
           <div className="flex items-center gap-4 mb-3">
-            <Upload className="w-6 h-6 flex-shrink-0" style={{ color: isFileLoading ? "oklch(0.75 0.17 65)" : "oklch(0.55 0.01 240)" }} />
+            <Upload className="w-6 h-6 flex-shrink-0" style={{ color: isFileLoading ? "oklch(0.75 0.17 65)" : uploadedFileName ? "oklch(0.65 0.2 145)" : "oklch(0.55 0.01 240)" }} />
             <div>
               <p className="text-sm font-medium" style={{ color: "oklch(0.80 0.005 60)" }}>
-                {isFileLoading ? "正在解析文件..." : "点击或拖拽上传剧本文件"}
+                {isFileLoading ? "正在解析文件..." : uploadedFileName ? uploadedFileName : "点击或拖拽上传剧本文件"}
               </p>
-              <p className="text-xs" style={{ color: "oklch(0.45 0.008 240)" }}>支持多种格式，或直接在下方粘贴文本</p>
+              <p className="text-xs" style={{ color: uploadedFileName ? "oklch(0.65 0.2 145)" : "oklch(0.45 0.008 240)" }}>
+                {uploadedFileName ? `剧本已加载，共 ${scriptText.length} 字` : "支持多种格式，或直接在下方粘贴文本"}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -396,11 +400,7 @@ export default function Phase1() {
                         </div>
                       </div>
                     </div>
-                    <div className="px-3 pb-3">
-                      <Textarea value={ep.synopsis} onChange={e => updateEpisode(ep.id, { synopsis: e.target.value })}
-                        rows={2} className="text-[10px] resize-none"
-                        style={{ background: "oklch(0.13 0.005 240)", border: "1px solid oklch(0.25 0.008 240)", color: "oklch(0.65 0.01 240)", fontFamily: "'JetBrains Mono', monospace" }} />
-                    </div>
+
                   </div>
                 ))}
               </div>
