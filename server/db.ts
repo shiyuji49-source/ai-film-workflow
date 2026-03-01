@@ -32,7 +32,6 @@ export async function createUser(data: {
     identifierType: data.identifierType,
     passwordHash: data.passwordHash,
     name: data.name ?? null,
-    credits: 0,
     lastSignedIn: new Date(),
   });
 

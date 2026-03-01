@@ -7,10 +7,11 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 interface AuthPageProps {
-  onSuccess: () => void;
+  onSuccess?: () => void;
 }
 
 export default function AuthPage({ onSuccess }: AuthPageProps) {
+  const handleSuccess = onSuccess ?? (() => { window.location.href = "/"; });
   const [mode, setMode] = useState<"login" | "register">("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -32,7 +33,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: () => {
       toast.success("登录成功，欢迎回来！");
-      onSuccess();
+      handleSuccess();
     },
     onError: (err) => {
       toast.error(err.message);
@@ -47,7 +48,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
       } else {
         toast.success("注册成功！欢迎加入鹯光机");
       }
-      onSuccess();
+      handleSuccess();
     },
     onError: (err) => {
       toast.error(err.message);
