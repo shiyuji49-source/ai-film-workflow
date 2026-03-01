@@ -88,3 +88,6 @@
 - [x] Dashboard 顶栏添加「AI 设置」入口按钮
 - [x] 后端 apiSettings tRPC 路由（get/save/test），修复 db 变量初始化问题
 - [x] 补充完整镜头类型（延时镜头、慢镜头及其他专业镜头），更新 workflowData.ts、AI 分镜生成 Prompt、视频提示词生成 Prompt
+- [x] Bug修复：2D资产人物主图比例改为16:9，修复切分逻辑（当前切分不准确）
+- [x] Bug修复：同一台电脑刷新后生成内容清空（migrateSnapshot 丢失图片 URL 字段）
+- [x] Bug修复：人物资产提示词生成缺少Q版形象（剧本中有Q版角色）

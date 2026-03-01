@@ -190,6 +190,7 @@ ${input.scriptText.slice(0, 80000)}
       name: z.string(),
       role: z.string(),
       isMecha: z.boolean(),
+      isQVersion: z.boolean().optional(),
       appearance: z.string(),
       costume: z.string(),
       marks: z.string().optional(),
@@ -197,7 +198,7 @@ ${input.scriptText.slice(0, 80000)}
       styleEn: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { name, isMecha, appearance, costume, marks, styleZh, styleEn } = input;
+      const { name, isMecha, isQVersion, appearance, costume, marks, styleZh, styleEn } = input;
 
       // 根据风格大类判断渲染方式要求
       const is2D = styleZh?.includes("2D") || styleEn?.includes("2D") || styleEn?.includes("hand-drawn") || styleEn?.includes("anime") || styleEn?.includes("cel");
@@ -258,10 +259,50 @@ ${renderingNote}
   "en": "English prompt content --ar 2:3 --style raw --q 2"
 }`;
 
+      // 如果需要 Q 版形象，同时生成 Q 版提示词
+      let qVersionZh = "";
+      let qVersionEn = "";
+      if (isQVersion && !isMecha) {
+        const styleEnStr2 = styleEn ? `\n- 风格关键词（必须在英文提示词中包含）：${styleEn}` : "";
+        const qPrompt = `你是专业的AI影片制作提示词工程师。请为以下角色生成一张用于 Midjourney 7（MJ7）的 Q 版形象参考图提示词。
+
+【角色信息】
+姓名：${name}
+外貌特征：${appearance}
+服装描述：${costume}
+特殊标记：${marks || "无"}
+整体风格：${styleZh || ""}
+
+【MJ7提示词要求】
+- 生成一张竖版（2:3比例）的 Q 版全身形象参考图
+- Q 版风格特征：大头小身（头身比大约 1:2）、圆润可爱的脸型、大眼睛、简化的身体比例
+- 保持角色的服装颜色、发型、标志性特征与正常形象一致
+- 纯白色背景，工作室光线
+- 中文提示词：详细描述 Q 版形象的大头小身风格、服装、表情
+- 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr2}
+- 英文提示词末尾加上：--ar 2:3 --style raw --q 2
+- 不要出现@符号，不要引用具体作品名称
+
+请严格输出以下输出格式：
+{
+  "zh": "中文提示词内容",
+  "en": "English prompt content --ar 2:3 --style raw --q 2"
+}`;
+        try {
+          const qRaw = await callGeminiProCreative(qPrompt);
+          const qCleaned = qRaw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
+          const qParsed = JSON.parse(qCleaned) as { zh: string; en: string };
+          qVersionZh = qParsed.zh;
+          qVersionEn = qParsed.en;
+        } catch {
+          // Q 版生成失败不影响主要提示词
+        }
+      }
+
       const raw = await callGeminiProCreative(prompt);
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as { zh: string; en: string };
-      return parsed;
+      return { ...parsed, qVersionZh: qVersionZh || undefined, qVersionEn: qVersionEn || undefined };
     }),
 
   // 3. 生成场景/道具 MJ7 提示词 ----------------------------------------------

@@ -127,6 +127,8 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
   const [importing, setImporting] = useState(false);
 
   const generateMJMutation = trpc.ai.generateCharacterPrompt.useMutation();
+  // Q 版开关状态（从 char 属性读取）
+  const isQVersion = char.isQVersion ?? false;
   const createAssetMutation = trpc.assets.create.useMutation();
   const uploadMutation = trpc.assets.uploadImage.useMutation();
   const generateDesignMutation = trpc.assets.generateCharacterDesign.useMutation();
@@ -154,13 +156,19 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
         name: char.name,
         role: char.role || "角色",
         isMecha: char.isMecha ?? false,
+        isQVersion: char.isQVersion ?? false,
         appearance: char.appearance || char.name,
         costume: char.costume || "",
         marks: char.marks || "",
         styleZh: projectInfo.styleZh,
         styleEn: projectInfo.styleEn,
       });
-      updateCharacter(char.id, { promptZh: result.zh, promptEn: result.en });
+      updateCharacter(char.id, {
+        promptZh: result.zh,
+        promptEn: result.en,
+        ...(result.qVersionZh ? { qVersionPromptZh: result.qVersionZh } : {}),
+        ...(result.qVersionEn ? { qVersionPromptEn: result.qVersionEn } : {}),
+      });
       toast.success(`${char.name} MJ7 提示词已生成`);
     } catch (err) {
       toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`);
@@ -266,6 +274,21 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
           {char.isMecha && (
             <Badge className="text-xs px-1.5 py-0" style={{ background: "oklch(0.55 0.18 240 / 0.15)", border: "1px solid oklch(0.55 0.18 240 / 0.4)", color: S.blue }}>机甲</Badge>
           )}
+          {!char.isMecha && (
+            <button
+              onClick={() => updateCharacter(char.id, { isQVersion: !isQVersion })}
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-all"
+              style={{
+                background: isQVersion ? "oklch(0.65 0.18 320 / 0.15)" : "oklch(0.22 0.006 240)",
+                border: `1px solid ${isQVersion ? "oklch(0.65 0.18 320 / 0.4)" : "oklch(0.30 0.008 240)"}`,
+                color: isQVersion ? "oklch(0.75 0.18 320)" : S.dim,
+                fontFamily: S.mono,
+              }}
+              title="开启后生成 MJ7 提示词时会同时生成 Q 版形象提示词"
+            >
+              {isQVersion ? "♥ Q版" : "□ Q版"}
+            </button>
+          )}
           {char.role && (
             <Badge className="text-xs px-1.5 py-0" style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.30 0.008 240)", color: S.dim }}>{char.role}</Badge>
           )}
@@ -337,6 +360,38 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
               </div>
               {char.promptEn}
             </div>
+            {/* Q 版形象提示词（开启 Q 版开关后展示） */}
+            {isQVersion && (char.qVersionPromptZh || char.qVersionPromptEn) && (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "oklch(0.65 0.18 320 / 0.15)", border: "1px solid oklch(0.65 0.18 320 / 0.3)", color: "oklch(0.75 0.18 320)", fontFamily: S.mono }}>♥ Q版形象</span>
+                  <span className="text-[10px]" style={{ color: S.dim }}>大头小身可爱风格提示词</span>
+                </div>
+                {char.qVersionPromptZh && (
+                  <div className="p-3 rounded text-xs leading-relaxed" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.65 0.18 320 / 0.25)", color: "oklch(0.75 0.008 240)", fontFamily: S.mono, whiteSpace: "pre-wrap" }}>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <span style={{ color: "oklch(0.65 0.18 320 / 0.7)" }}>ZH</span>
+                      <CopyButton text={char.qVersionPromptZh} />
+                    </div>
+                    {char.qVersionPromptZh}
+                  </div>
+                )}
+                {char.qVersionPromptEn && (
+                  <div className="p-3 rounded text-xs leading-relaxed" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.65 0.18 320 / 0.25)", color: "oklch(0.70 0.008 240)", fontFamily: S.mono, whiteSpace: "pre-wrap" }}>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <span style={{ color: "oklch(0.65 0.18 320 / 0.7)" }}>EN</span>
+                      <CopyButton text={char.qVersionPromptEn} />
+                    </div>
+                    {char.qVersionPromptEn}
+                  </div>
+                )}
+              </div>
+            )}
+            {isQVersion && !char.qVersionPromptZh && !char.qVersionPromptEn && (
+              <div className="p-2 rounded text-[10px] text-center" style={{ background: "oklch(0.65 0.18 320 / 0.05)", border: "1px dashed oklch(0.65 0.18 320 / 0.25)", color: "oklch(0.65 0.18 320 / 0.7)" }}>
+                已开启 Q 版形象，点击「AI 生成」将同时生成 Q 版提示词
+              </div>
+            )}
           </div>
         ) : (
           <div className="p-3 rounded text-xs text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)", color: S.dim }}>
@@ -390,8 +445,8 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
         {/* 主图展示 */}
         {designImage ? (
           <div className="space-y-3">
-            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid oklch(0.25 0.008 240)" }}>
-              <img src={designImage} alt="角色设计主图" className="w-full object-contain" style={{ maxHeight: 320 }} />
+            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid oklch(0.25 0.008 240)", aspectRatio: "16/9", background: "oklch(0.08 0.003 240)" }}>
+              <img src={designImage} alt="角色设计主图" className="w-full h-full object-contain" />
             </div>
             <div className="flex items-center gap-2">
               <a href={designImage} download target="_blank" rel="noreferrer"
@@ -453,7 +508,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
               return (
                 <div key={key} className="space-y-1">
                   <div className="rounded overflow-hidden"
-                    style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", aspectRatio: "3/4" }}>
+                    style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", aspectRatio: "2/3" }}>
                     {url
                       ? <img src={url} alt={label} className="w-full h-full object-cover" />
                       : <div className="w-full h-full flex items-center justify-center">

@@ -91,6 +91,19 @@ function migrateSnapshot(raw: Record<string, unknown>): ProjectSnapshot {
     isMecha: typeof c.isMecha === "boolean" ? c.isMecha : false,
     promptZh: (c.promptZh as string) || "",
     promptEn: (c.promptEn as string) || "",
+    // 图片 URL 字段 — 必须保留，否则刷新后资产图片丢失
+    ...(c.uploadedImageUrl ? { uploadedImageUrl: c.uploadedImageUrl as string } : {}),
+    ...(c.designImageUrl ? { designImageUrl: c.designImageUrl as string } : {}),
+    ...(c.mainImageUrl ? { mainImageUrl: c.mainImageUrl as string } : {}),
+    ...(c.closeupImageUrl ? { closeupImageUrl: c.closeupImageUrl as string } : {}),
+    ...(c.frontImageUrl ? { frontImageUrl: c.frontImageUrl as string } : {}),
+    ...(c.sideImageUrl ? { sideImageUrl: c.sideImageUrl as string } : {}),
+    ...(c.backImageUrl ? { backImageUrl: c.backImageUrl as string } : {}),
+    ...(c.assetLibId ? { assetLibId: c.assetLibId as number } : {}),
+    // Q版形象字段
+    ...(typeof c.isQVersion === "boolean" ? { isQVersion: c.isQVersion } : {}),
+    ...(c.qVersionPromptZh ? { qVersionPromptZh: c.qVersionPromptZh as string } : {}),
+    ...(c.qVersionPromptEn ? { qVersionPromptEn: c.qVersionPromptEn as string } : {}),
   }));
   return {
     id: (raw.id as string) || "",

@@ -38,8 +38,11 @@ export interface Character {
   costume: string;       // 服装/装甲描述
   marks: string;         // 特殊标记
   isMecha: boolean;      // 是否为机甲/载具类角色
+  isQVersion?: boolean;   // 是否需要 Q 版形象（大头小身可爱风格）
   promptZh: string;      // MJ7 提示词（中文）
   promptEn: string;      // MJ7 提示词（英文）
+  qVersionPromptZh?: string;  // Q版形象 MJ7 提示词（中文）
+  qVersionPromptEn?: string;  // Q版形象 MJ7 提示词（英文）
   nanoPrompt?: string;        // Nano Banana Pro 辅助提示词
   uploadedImageUrl?: string;  // 上传的 MJ 参考图 URL
   designImageUrl?: string;    // Nano 生成的16:9角色设计主图

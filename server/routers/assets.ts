@@ -159,9 +159,11 @@ export const assetsRouter = router({
       try {
         // 使用用户提供的 NBP 提示词，或使用默认的角色设计图提示词
         const basePrompt = input.nanoPrompt?.trim() || "";
+        // 强制横版 16:9 布局：左1/3近景头像，右2/3三视图（正/侧/背）
+        const layoutInstruction = `HORIZONTAL LANDSCAPE WIDE FORMAT character reference sheet, wider than tall. FOUR panels arranged left to right in one row: [Panel 1 - leftmost 1/4 width] large close-up portrait of face and upper body. [Panel 2] full-body front-facing standing pose. [Panel 3] full-body side-view standing pose. [Panel 4 - rightmost] full-body back-view standing pose. All characters same height, arms slightly away from body. Pure white background, even studio lighting, no drop shadows, clean anime/manga character model sheet style, landscape orientation.`;
         const designPrompt = basePrompt
-          ? `Professional character reference design sheet. Layout: left area (1/3) close-up face showing facial features and expression details | right area (2/3) three-pose turnaround - front standing pose, side standing pose, back standing pose. Arms slightly away from body. Pure white background, even studio lighting, no shadows, character model design sheet style, 16:9 aspect ratio. ${basePrompt}, maintain exact same style and appearance as reference`
-          : `Professional character reference design sheet. Layout: left area (1/3) close-up face showing facial features and expression details | right area (2/3) three-pose turnaround - front standing pose, side standing pose, back standing pose. Arms slightly away from body. Pure white background, even studio lighting, no shadows, character model design sheet style, 16:9 aspect ratio, maintain exact same style and appearance as reference, high quality`;
+          ? `${layoutInstruction} Character description: ${basePrompt}. Maintain exact same art style and character appearance as the reference image.`
+          : `${layoutInstruction} Maintain exact same art style and character appearance as the reference image. High quality, clean linework.`;
 
         const genResult = await generateImage({
           prompt: designPrompt,
@@ -214,21 +216,28 @@ export const assetsRouter = router({
 
         // 下载主图
         const imgResp = await fetch(asset.mainImageUrl);
-        const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
-        const metadata = await sharp(imgBuffer).metadata();
-        const W = metadata.width ?? 1600;
-        const H = metadata.height ?? 900;
+        let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+        let metadata = await sharp(imgBuffer).metadata();
+        let W = metadata.width ?? 1600;
+        let H = metadata.height ?? 900;
 
-        // 16:9 布局：左1/3为近景，右2/3分三列（正/侧/背）
-        const leftW = Math.floor(W / 3);
-        const rightW = W - leftW;
-        const colW = Math.floor(rightW / 3);
+        // 如果图片是竖版（H > W），自动旋转 90° 使其变为横版
+        if (H > W) {
+          const rotated = await sharp(imgBuffer).rotate(90).toBuffer();
+          imgBuffer = Buffer.from(rotated);
+          metadata = await sharp(imgBuffer).metadata();
+          W = metadata.width ?? H;
+          H = metadata.height ?? W;
+        }
+
+        // 横版布局：平分为 4 列（近景头像 / 正视图 / 侧视图 / 后视图）
+        const colW = Math.floor(W / 4);
 
         const crops = [
-          { key: "closeup", label: "近景", left: 0, top: 0, width: leftW, height: H },
-          { key: "front",   label: "正视图", left: leftW, top: 0, width: colW, height: H },
-          { key: "side",    label: "侧视图", left: leftW + colW, top: 0, width: colW, height: H },
-          { key: "back",    label: "后视图", left: leftW + colW * 2, top: 0, width: W - (leftW + colW * 2), height: H },
+          { key: "closeup", label: "近景", left: 0, top: 0, width: colW, height: H },
+          { key: "front",   label: "正视图", left: colW, top: 0, width: colW, height: H },
+          { key: "side",    label: "侧视图", left: colW * 2, top: 0, width: colW, height: H },
+          { key: "back",    label: "后视图", left: colW * 3, top: 0, width: W - colW * 3, height: H },
         ];
 
         const results: Record<string, string> = {};
