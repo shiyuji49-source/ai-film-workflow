@@ -1,6 +1,6 @@
 // DESIGN: "鎏光机" 导演手册工业风暗色系 — Single-Project Context (v3)
 // Now backed by ProjectManagerContext for multi-project support + localStorage persistence.
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { useProjectManager } from "./ProjectManagerContext";
 
 // ─── Core Types ───────────────────────────────────────────────────────────────
@@ -443,6 +443,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
     () => new Set<string>(activeSnap?.completedPhases ?? [])
   );
+  // Guard: only allow syncToManager AFTER we've loaded data from the manager at least once.
+  // This prevents the initial empty state from overwriting localStorage data.
+  const isInitializedRef = useRef(false);
 
   // When active project changes in manager, reload all local state
   useEffect(() => {
@@ -460,11 +463,23 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     if (snap.scriptAnalysis.episodes.length > 0) {
       setActiveEpisodeId(snap.scriptAnalysis.episodes[0].id);
     }
+    // Mark as initialized so syncToManager can now write back
+    isInitializedRef.current = true;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manager.activeProjectId]);
 
-  // Sync all state changes back to manager (debounced via useEffect)
+  // On first mount, if activeSnap already exists (localStorage loaded synchronously),
+  // mark as initialized immediately so user edits are not lost.
   useEffect(() => {
+    if (activeSnap && !isInitializedRef.current) {
+      isInitializedRef.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync all state changes back to manager — only after initialization
+  useEffect(() => {
+    if (!isInitializedRef.current) return;
     manager.updateProjectSnapshot({
       projectInfo, scriptText, scriptAnalysis, characters,
       episodeAssets, shots, videoSegments,

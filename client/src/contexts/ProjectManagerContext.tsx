@@ -368,12 +368,13 @@ export function ProjectManagerProvider({ children }: { children: React.ReactNode
     }
   }, [activeCloudProject, activeProjectId, isCloudMode]);
 
-  // ── Auto-save to localStorage (local mode) ────────────────────────────────────
+  // ── Auto-save to localStorage (always) ────────────────────────────────────────
+  // Always persist to localStorage as an instant local cache.
+  // In cloud mode this acts as a safety net: if the user refreshes before the
+  // 2-second cloud-sync debounce fires, data is still recoverable from localStorage.
   useEffect(() => {
-    if (!isCloudMode) {
-      saveLocalProjects(projects);
-    }
-  }, [projects, isCloudMode]);
+    saveLocalProjects(projects);
+  }, [projects]);
 
   useEffect(() => {
     if (activeProjectId) localStorage.setItem(ACTIVE_KEY, activeProjectId);
