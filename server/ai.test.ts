@@ -9,7 +9,7 @@ describe("Gemini API Key", () => {
 
   it("should successfully call Gemini API", async () => {
     const apiKey = ENV.geminiApiKey;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`;
     const body = {
       contents: [{ parts: [{ text: 'Reply with exactly this JSON: {"status":"ok"}' }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 500 },
@@ -22,7 +22,7 @@ describe("Gemini API Key", () => {
     expect(res.ok).toBe(true);
     const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    // Strip markdown code fences (gemini-2.5-pro wraps JSON in ```json ... ```)
+    // Strip markdown code fences (model may wrap JSON in ```json ... ```)
     const text = raw.replace(/^```[a-z]*\n?/m, "").replace(/\n?```$/m, "").trim();
     expect(text).toContain("ok");
   }, 30000);

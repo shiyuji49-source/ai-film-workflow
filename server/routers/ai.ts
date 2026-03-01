@@ -6,7 +6,7 @@ import { ENV } from "../_core/env";
 
 // Gemini API helper --------------------------------------------------------
 
-async function callGemini(prompt: string, maxOutputTokens = 65536, model = "gemini-2.5-pro-preview-06-05"): Promise<string> {
+async function callGemini(prompt: string, maxOutputTokens = 65536, model = "gemini-3.1-pro-preview"): Promise<string> {
   const apiKey = ENV.geminiApiKey;
   if (!apiKey) throw new Error("GEMINI_API_KEY 未配置");
 
@@ -48,13 +48,13 @@ async function callGemini(prompt: string, maxOutputTokens = 65536, model = "gemi
   return text;
 }
 
-// 剧本解析用：gemini-2.5-flash-preview（速度快，适合结构化输出）
+// 剧本解析用：gemini-3-flash-preview（速度快，适合结构化输出）
 const callGeminiFlash = (prompt: string, maxOutputTokens = 65536) =>
-  callGemini(prompt, maxOutputTokens, "gemini-2.5-flash-preview-05-20");
+  callGemini(prompt, maxOutputTokens, "gemini-3-flash-preview");
 
-// MJ 提示词生成用：gemini-2.5-pro-preview（质量高，适合创意性内容生成）
+// MJ 提示词生成用：gemini-3.1-pro-preview（最新旗舰模型，适合创意性内容生成）
 const callGeminiPro = (prompt: string, maxOutputTokens = 8192) =>
-  callGemini(prompt, maxOutputTokens, "gemini-2.5-pro-preview-06-05");
+  callGemini(prompt, maxOutputTokens, "gemini-3.1-pro-preview");
 
 // Router -------------------------------------------------------------------
 
