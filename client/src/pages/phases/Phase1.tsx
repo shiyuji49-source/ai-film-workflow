@@ -7,8 +7,73 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, ChevronRight, AlertTriangle, Upload, FileText, Wand2, Users, MapPin, Package } from "lucide-react";
-import { useState, useRef } from "react";
+import { CheckCircle2, ChevronRight, AlertTriangle, Upload, FileText, Wand2, Users, MapPin, Package, Plus, X } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
+
+// 可编辑道具标签组件
+function PropEditor({ props, onChange }: { props: string[]; onChange: (p: string[]) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [newVal, setNewVal] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commit = useCallback(() => {
+    const v = newVal.trim();
+    if (v && !props.includes(v)) onChange([...props, v]);
+    setNewVal("");
+    setAdding(false);
+  }, [newVal, props, onChange]);
+
+  return (
+    <div>
+      <div className="flex items-center gap-1 mb-1.5">
+        <Package className="w-3 h-3" style={{ color: "oklch(0.55 0.01 240)" }} />
+        <span className="text-[10px] font-semibold" style={{ color: "oklch(0.55 0.01 240)" }}>关键道具</span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {props.length === 0 && !adding && (
+          <span className="text-[10px]" style={{ color: "oklch(0.40 0.008 240)" }}>无</span>
+        )}
+        {props.map(p => (
+          <span key={p} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded group"
+            style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.70 0.008 240)" }}>
+            {p}
+            <button
+              className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 hover:text-red-400"
+              onClick={() => onChange(props.filter(x => x !== p))}
+              title="删除道具"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </span>
+        ))}
+        {adding ? (
+          <input
+            ref={inputRef}
+            autoFocus
+            value={newVal}
+            onChange={e => setNewVal(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") { setAdding(false); setNewVal(""); }
+            }}
+            onBlur={commit}
+            placeholder="道具名称"
+            className="text-[10px] px-1.5 py-0.5 rounded outline-none w-20"
+            style={{ background: "oklch(0.18 0.006 240)", border: "1px solid oklch(0.55 0.18 290 / 0.5)", color: "oklch(0.88 0.005 60)" }}
+          />
+        ) : (
+          <button
+            className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded transition-opacity hover:opacity-80"
+            style={{ background: "oklch(0.55 0.18 290 / 0.12)", border: "1px dashed oklch(0.55 0.18 290 / 0.4)", color: "oklch(0.55 0.18 290)" }}
+            onClick={() => setAdding(true)}
+          >
+            <Plus className="w-2.5 h-2.5" />添加
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 import { toast } from "sonner";
 import { extractTextFromFile, detectFormat, ACCEPTED_FORMATS, formatLabel } from "@/lib/scriptParser";
 import { trpc } from "@/lib/trpc";
@@ -396,18 +461,10 @@ export default function Phase1() {
                           ))}
                         </div>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1 mb-1.5">
-                          <Package className="w-3 h-3" style={{ color: "oklch(0.55 0.01 240)" }} />
-                          <span className="text-[10px] font-semibold" style={{ color: "oklch(0.55 0.01 240)" }}>关键道具</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {ep.props.length > 0 ? ep.props.map(p => (
-                            <span key={p} className="text-[10px] px-1.5 py-0.5 rounded"
-                              style={{ background: "oklch(0.22 0.006 240)", color: "oklch(0.70 0.008 240)" }}>{p}</span>
-                          )) : <span className="text-[10px]" style={{ color: "oklch(0.40 0.008 240)" }}>无</span>}
-                        </div>
-                      </div>
+                      <PropEditor
+                        props={ep.props}
+                        onChange={newProps => updateEpisode(ep.id, { props: newProps })}
+                      />
                     </div>
 
                   </div>

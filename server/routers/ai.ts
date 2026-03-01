@@ -160,7 +160,7 @@ ${input.scriptText.slice(0, 80000)}
   ]
 }`;
 
-      const raw = await callGeminiFlash(prompt, 65536);
+      const raw = await callGeminiProCreative(prompt, 65536);
       // 清理 markdown 代码块
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as {

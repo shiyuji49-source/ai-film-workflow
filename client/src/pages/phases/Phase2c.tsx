@@ -144,6 +144,10 @@ function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
     else if (/瓶|盒|笛|杆|包|袋|鼎|bottle|box|bag|container|vessel/.test(n)) {
       basePrompt = "container three-view design sheet, front view left, side view center, back view right, material and texture details, clean white background, studio lighting, no shadows";
     }
+    // 界面/UI/显示类
+    else if (/面板|屏幕|界面|显示器|控制台|全息|头盔|数据|导航|监控|panel|screen|interface|display|hud|holographic|console|monitor/.test(n)) {
+      basePrompt = "holographic UI panel design sheet, front view center, dark background, glowing interface elements, neon blue and cyan color scheme, sci-fi HUD style, clean layout with data readouts, no physical frame, floating display effect";
+    }
     if (customPrompt) return `${basePrompt}, ${customPrompt}`;
     return basePrompt;
   };
