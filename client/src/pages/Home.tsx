@@ -7,6 +7,7 @@ import { useProjectManager } from "@/contexts/ProjectManagerContext";
 import Phase1 from "./phases/Phase1";
 import Phase2 from "./phases/Phase2";
 import Phase2b from "./phases/Phase2b";
+import Phase2c from "./phases/Phase2c";
 import Phase3 from "./phases/Phase3";
 import Phase4 from "./phases/Phase4";
 import Phase5 from "./phases/Phase5";
@@ -26,6 +27,7 @@ const PHASE_MAP: Record<string, React.ReactNode> = {
   phase1: <Phase1 />,
   phase2: <Phase2 />,
   phase2b: <Phase2b />,
+  phase2c: <Phase2c />,
   phase3: <Phase3 />,
   phase4: <Phase4 />,
   phase5: <Phase5 />,

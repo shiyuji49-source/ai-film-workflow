@@ -42,10 +42,12 @@ export interface Character {
   promptEn: string;      // MJ7 提示词（英文）
   nanoPrompt?: string;        // Nano Banana Pro 辅助提示词
   uploadedImageUrl?: string;  // 上传的 MJ 参考图 URL
-  mainImageUrl?: string;      // Nano 生成的主视图 URL
-  frontImageUrl?: string;     // 正面视图
-  sideImageUrl?: string;      // 侧面视图
-  backImageUrl?: string;      // 背面视图
+  designImageUrl?: string;    // Nano 生成的16:9角色设计主图
+  mainImageUrl?: string;      // 居中兼容（就是 designImageUrl）
+  closeupImageUrl?: string;   // 切分：近景
+  frontImageUrl?: string;     // 切分：正视图
+  sideImageUrl?: string;      // 切分：侧视图
+  backImageUrl?: string;      // 切分：后视图
   assetLibId?: number;        // 已导入资产库的 ID
 }
 

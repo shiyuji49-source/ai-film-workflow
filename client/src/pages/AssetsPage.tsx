@@ -1,579 +1,424 @@
-// 鎏光机 - 资产库页面（重构版）
-// 流程：上传 MJ 参考图 → Nano Banana Pro 生成主视图和三视图
-import { useState, useRef, useCallback } from "react";
+// 鎏光机 - 资产库（重构版）
+// 简洁 Excel 表格样式：按集 x 类型（人物/场景/道具）罗列资产
+// 支持：从工作流导入 | 导出带提示词的 Excel 表 | 打包下载所有图片
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useProject } from "@/contexts/ProjectContext";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  Plus, Trash2, Upload, Loader2, Download, ImageIcon,
-  User, Mountain, ChevronRight, Copy, RefreshCw, Zap, ArrowLeft, Layers
+  Download, FileSpreadsheet, Archive, User, Mountain, Package,
+  ImageIcon, ExternalLink, ChevronDown, ChevronUp, Loader2, ArrowLeft
 } from "lucide-react";
 import { Link } from "wouter";
 import * as XLSX from "xlsx";
+import JSZip from "jszip";
 
-type AssetType = "character" | "scene";
-type ViewType = "front" | "side" | "back" | "angle1" | "angle2" | "angle3";
-
-const VIEW_LABELS: Record<ViewType, string> = {
-  front: "正面",
-  side: "侧面",
-  back: "背面",
-  angle1: "四分之三视角",
-  angle2: "俯视",
-  angle3: "仰视",
+const S = {
+  bg: "oklch(0.11 0.005 240)",
+  amber: "oklch(0.75 0.17 65)",
+  green: "oklch(0.65 0.2 145)",
+  blue: "oklch(0.60 0.18 240)",
+  orange: "oklch(0.70 0.18 55)",
+  dim: "oklch(0.50 0.008 240)",
+  text: "oklch(0.92 0.005 60)",
+  sub: "oklch(0.70 0.008 240)",
+  mono: "'JetBrains Mono', monospace" as const,
+  grotesk: "'Space Grotesk', sans-serif" as const,
+  border: "oklch(0.22 0.006 240)",
 };
 
-const CHARACTER_VIEWS: ViewType[] = ["front", "side", "back"];
-const SCENE_VIEWS: ViewType[] = ["angle1", "angle2", "angle3"];
+type AssetType = "character" | "scene" | "prop";
 
-const BG = "oklch(0.11 0.005 240)";
-const CARD_BG = "oklch(0.15 0.006 240)";
-const BORDER = "oklch(0.22 0.006 240)";
-const GOLD = "oklch(0.75 0.17 65)";
-const TEXT = "oklch(0.92 0.005 60)";
-const MUTED = "oklch(0.50 0.008 240)";
-const INPUT_BG = "oklch(0.11 0.005 240)";
-const ACCENT = "oklch(0.65 0.15 200)";
+interface AssetRow {
+  id: number;
+  name: string;
+  type: AssetType;
+  episodeId?: string;
+  episodeName?: string;
+  mjPrompt?: string | null;
+  nanoPrompt?: string | null;
+  uploadedImageUrl?: string | null;
+  mainImageUrl?: string | null;
+  multiViewUrls?: string | null;
+  splitImages?: Record<string, string>;
+}
 
-// ─── 图片上传区 ───────────────────────────────────────────────────────────────
-function ImageUploadZone({
-  label, imageUrl, onUpload, uploading,
-}: {
-  label: string;
-  imageUrl?: string | null;
-  onUpload: (base64: string, mimeType: string) => void;
-  uploading: boolean;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
+const TYPE_CONFIG: Record<AssetType, { label: string; color: string; icon: React.ReactNode }> = {
+  character: { label: "人物", color: S.blue, icon: <User className="w-3.5 h-3.5" /> },
+  scene: { label: "场景", color: S.green, icon: <Mountain className="w-3.5 h-3.5" /> },
+  prop: { label: "道具", color: S.orange, icon: <Package className="w-3.5 h-3.5" /> },
+};
 
-  const handleFile = useCallback((file: File) => {
-    if (file.size > 16 * 1024 * 1024) { toast.error("图片大小不能超过 16MB"); return; }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      const [header, base64] = result.split(",");
-      const mimeType = header.match(/data:(.*);base64/)?.[1] ?? "image/jpeg";
-      onUpload(base64, mimeType);
-    };
-    reader.readAsDataURL(file);
-  }, [onUpload]);
-
-  return (
-    <div
-      className="relative border-2 border-dashed rounded-xl overflow-hidden cursor-pointer transition-all"
-      style={{ borderColor: imageUrl ? "oklch(0.45 0.12 65)" : BORDER, background: INPUT_BG, minHeight: "200px" }}
-      onClick={() => inputRef.current?.click()}
-      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith("image/")) handleFile(f); }}
-      onDragOver={(e) => e.preventDefault()}
-    >
-      <input ref={inputRef} type="file" accept="image/*" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-      {imageUrl ? (
-        <div className="relative" style={{ minHeight: "200px" }}>
-          <img src={imageUrl} alt={label} className="w-full object-contain" style={{ maxHeight: "260px" }} />
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-            style={{ background: "oklch(0 0 0 / 0.6)" }}>
-            <span className="text-xs" style={{ color: TEXT }}>点击重新上传</span>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center gap-3 p-8" style={{ minHeight: "200px" }}>
-          {uploading
-            ? <Loader2 className="w-8 h-8 animate-spin" style={{ color: GOLD }} />
-            : <>
-                <Upload className="w-8 h-8" style={{ color: "oklch(0.35 0.008 240)" }} />
-                <p className="text-sm text-center" style={{ color: MUTED }}>{label}</p>
-                <p className="text-xs" style={{ color: "oklch(0.38 0.008 240)" }}>点击或拖拽上传 · 最大 16MB</p>
-              </>
-          }
-        </div>
-      )}
+function AssetThumbnail({ url, alt }: { url?: string | null; alt: string }) {
+  if (!url) return (
+    <div className="w-16 h-12 rounded flex items-center justify-center flex-shrink-0" style={{ background: "oklch(0.12 0.005 240)", border: "1px solid oklch(0.20 0.006 240)" }}>
+      <ImageIcon className="w-4 h-4" style={{ color: "oklch(0.30 0.006 240)" }} />
     </div>
+  );
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block flex-shrink-0 group relative">
+      <img src={url} alt={alt} className="w-16 h-12 object-cover rounded" style={{ border: "1px solid oklch(0.22 0.006 240)" }} />
+      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded" style={{ background: "oklch(0 0 0 / 0.5)" }}>
+        <ExternalLink className="w-3 h-3" style={{ color: "white" }} />
+      </div>
+    </a>
   );
 }
 
-// ─── 主页面 ───────────────────────────────────────────────────────────────────
-export default function AssetsPage() {
-  const { user } = useAuth();
-  const [activeType, setActiveType] = useState<AssetType>("character");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [generatingMain, setGeneratingMain] = useState(false);
-  const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
-  const [batchGenerating, setBatchGenerating] = useState(false);
-  const [batchProgress, setBatchProgress] = useState("");
-  const [showHistory, setShowHistory] = useState<{ imageType: string; label: string } | null>(null);
+function AssetCell({ assets, type }: { assets: AssetRow[]; type: AssetType }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? assets : assets.slice(0, 2);
 
-  const utils = trpc.useUtils();
-  const { data: assets = [], isLoading } = trpc.assets.list.useQuery({ type: activeType });
-  const selectedAsset = assets.find((a) => a.id === selectedId) ?? null;
-  const multiViewUrls: Record<string, string> = selectedAsset?.multiViewUrls ? JSON.parse(selectedAsset.multiViewUrls) : {};
-  const views = activeType === "character" ? CHARACTER_VIEWS : SCENE_VIEWS;
-
-  const createMutation = trpc.assets.create.useMutation({
-    onSuccess: (asset) => {
-      utils.assets.list.invalidate();
-      setSelectedId(asset.id);
-      setShowCreate(false);
-      setNewName(""); setNewDesc("");
-      toast.success("资产已创建");
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const updateMutation = trpc.assets.update.useMutation({
-    onSuccess: () => utils.assets.list.invalidate(),
-    onError: (e) => toast.error(e.message),
-  });
-
-  const deleteMutation = trpc.assets.delete.useMutation({
-    onSuccess: () => { utils.assets.list.invalidate(); setSelectedId(null); toast.success("资产已删除"); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const uploadMutation = trpc.assets.uploadImage.useMutation({
-    onSuccess: () => { utils.assets.list.invalidate(); toast.success("参考图已上传"); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const generateMainMutation = trpc.assets.generateMain.useMutation({
-    onSuccess: () => { utils.assets.list.invalidate(); utils.assets.getHistory.invalidate(); toast.success("主视图生成完成！"); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const generateMultiMutation = trpc.assets.generateMultiView.useMutation({
-    onSuccess: () => { utils.assets.list.invalidate(); utils.assets.getHistory.invalidate(); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const { data: historyData = [] } = trpc.assets.getHistory.useQuery(
-    { id: selectedId ?? 0, imageType: showHistory?.imageType },
-    { enabled: !!selectedId && !!showHistory }
-  );
-
-  const selectHistoryMutation = trpc.assets.selectHistoryVersion.useMutation({
-    onSuccess: () => { utils.assets.list.invalidate(); toast.success("已切换到该历史版本"); setShowHistory(null); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const handleUpload = async (base64: string, mimeType: string) => {
-    if (!selectedId) return;
-    setUploading(true);
-    try { await uploadMutation.mutateAsync({ id: selectedId, imageBase64: base64, mimeType }); }
-    finally { setUploading(false); }
-  };
-
-  const handleGenerateMain = async () => {
-    if (!selectedId) return;
-    if (!selectedAsset?.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
-    setGeneratingMain(true);
-    try { await generateMainMutation.mutateAsync({ id: selectedId, prompt: selectedAsset.mainPrompt ?? undefined }); }
-    finally { setGeneratingMain(false); }
-  };
-
-  const handleGenerateView = async (viewType: ViewType) => {
-    if (!selectedId) return;
-    if (!selectedAsset?.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
-    setGeneratingViews((p) => ({ ...p, [viewType]: true }));
-    try {
-      await generateMultiMutation.mutateAsync({ id: selectedId, viewType, prompt: selectedAsset.mainPrompt ?? undefined });
-      toast.success(`${VIEW_LABELS[viewType]} 生成完成`);
-    } finally { setGeneratingViews((p) => ({ ...p, [viewType]: false })); }
-  };
-
-  const handleBatchGenerate = async () => {
-    if (!selectedId || !selectedAsset?.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
-    const pending = views.filter((v) => !multiViewUrls[v]);
-    if (pending.length === 0) { toast.info("所有视角图已生成完毕"); return; }
-    setBatchGenerating(true);
-    for (let i = 0; i < pending.length; i++) {
-      const vt = pending[i];
-      setBatchProgress(`${i + 1}/${pending.length}`);
-      try {
-        await generateMultiMutation.mutateAsync({ id: selectedId, viewType: vt, prompt: selectedAsset.mainPrompt ?? undefined });
-        await utils.assets.list.invalidate();
-      } catch { toast.error(`${VIEW_LABELS[vt]} 生成失败，已跳过`); }
-    }
-    setBatchGenerating(false); setBatchProgress("");
-    toast.success("批量生成完成！");
-  };
-
-  const handleExport = () => {
-    if (assets.length === 0) { toast.error("暂无资产数据"); return; }
-    const rows = assets.map((a) => {
-      const mv = a.multiViewUrls ? JSON.parse(a.multiViewUrls) : {};
-      return {
-        "资产名称": a.name, "类型": a.type === "character" ? "人物" : "场景/道具",
-        "描述": a.description ?? "", "MJ7 提示词": (a as any).mjPrompt ?? "",
-        "NBP 辅助提示词": a.mainPrompt ?? "", "MJ 参考图": (a as any).uploadedImageUrl ?? "",
-        "主视图": a.mainImageUrl ?? "",
-        "正面": mv.front ?? "", "侧面": mv.side ?? "", "背面": mv.back ?? "",
-        "四分之三视角": mv.angle1 ?? "", "俯视": mv.angle2 ?? "", "仰视": mv.angle3 ?? "",
-        "状态": a.status === "done" ? "已完成" : a.status === "generating" ? "生成中" : a.status === "failed" ? "失败" : "草稿",
-        "创建时间": new Date(a.createdAt).toLocaleString("zh-CN"),
-      };
-    });
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [20, 10, 30, 60, 50, 60, 60, 60, 60, 60, 60, 60, 60, 8, 20].map(w => ({ wch: w }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, activeType === "character" ? "人物资产" : "场景资产");
-    XLSX.writeFile(wb, `鎏光机_${activeType === "character" ? "人物" : "场景"}资产_${new Date().toLocaleDateString("zh-CN").replace(/\//g, "-")}.xlsx`);
-    toast.success("Excel 已导出");
-  };
-
-  const pendingViews = views.filter((v) => !multiViewUrls[v]);
+  if (assets.length === 0) {
+    return (
+      <td className="px-3 py-2 align-top" style={{ borderRight: `1px solid ${S.border}`, minWidth: "200px", verticalAlign: "top" }}>
+        <div className="text-xs text-center py-3" style={{ color: "oklch(0.30 0.006 240)" }}>—</div>
+      </td>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: BG, fontFamily: "'Noto Sans SC', 'Space Grotesk', sans-serif" }}>
-      {/* 顶栏 */}
-      <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: BORDER, background: "oklch(0.13 0.005 240)" }}>
-        <div className="flex items-center gap-4">
+    <td className="px-3 py-2 align-top" style={{ borderRight: `1px solid ${S.border}`, minWidth: "200px", verticalAlign: "top" }}>
+      <div className="space-y-2">
+        {visible.map(asset => {
+          const splitImgList = asset.splitImages ? Object.values(asset.splitImages).filter(Boolean) as string[] : [];
+          const multiImgList: string[] = [];
+          if (asset.multiViewUrls) { try { multiImgList.push(...(JSON.parse(asset.multiViewUrls) as string[])); } catch { /* ignore */ } }
+          const allImages = [asset.mainImageUrl, ...splitImgList, ...multiImgList].filter(Boolean) as string[];
+
+          return (
+            <div key={asset.id} className="p-2 rounded" style={{ background: "oklch(0.12 0.005 240)", border: "1px solid oklch(0.20 0.006 240)" }}>
+              <div className="flex items-start gap-2">
+                <AssetThumbnail url={asset.mainImageUrl || asset.uploadedImageUrl} alt={asset.name} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate" style={{ color: S.text, fontFamily: S.grotesk }}>{asset.name}</p>
+                  {asset.mjPrompt && (
+                    <p className="text-[10px] mt-0.5 line-clamp-2" style={{ color: S.dim, fontFamily: S.mono }}>{asset.mjPrompt.slice(0, 80)}{asset.mjPrompt.length > 80 ? "..." : ""}</p>
+                  )}
+                  {allImages.length > 0 && (
+                    <div className="flex gap-1 mt-1.5 flex-wrap">
+                      {allImages.slice(0, 4).map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noreferrer">
+                          <img src={url} alt={`视图${i + 1}`} className="w-8 h-6 object-cover rounded" style={{ border: "1px solid oklch(0.22 0.006 240)" }} />
+                        </a>
+                      ))}
+                      {allImages.length > 4 && <span className="text-[10px] self-center" style={{ color: S.dim }}>+{allImages.length - 4}</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {assets.length > 2 && (
+          <button onClick={() => setExpanded(e => !e)} className="w-full text-[10px] py-1 rounded flex items-center justify-center gap-1" style={{ color: TYPE_CONFIG[type].color, background: "oklch(0.12 0.005 240)", border: "1px solid oklch(0.20 0.006 240)" }}>
+            {expanded ? <><ChevronUp className="w-3 h-3" />收起</> : <><ChevronDown className="w-3 h-3" />展开 {assets.length - 2} 个</>}
+          </button>
+        )}
+      </div>
+    </td>
+  );
+}
+
+export default function AssetsPage() {
+  const { isAuthenticated } = useAuth();
+  const { scriptAnalysis, episodeAssets } = useProject();
+  const [downloading, setDownloading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const { data: cloudAssets = [], isLoading } = trpc.assets.list.useQuery(
+    {},
+    { enabled: isAuthenticated }
+  );
+
+  const assetRows = useMemo((): AssetRow[] => {
+    const rows: AssetRow[] = [];
+    const episodes = scriptAnalysis?.episodes ?? [];
+
+    episodeAssets.forEach(ea => {
+      const ep = episodes.find(e => e.id === ea.episodeId);
+      const cloud = ea.assetLibId ? cloudAssets.find(a => a.id === ea.assetLibId) : null;
+
+      let splitImages: Record<string, string> | undefined;
+      if ((ea as any).splitImages) {
+        try { splitImages = JSON.parse((ea as any).splitImages as string); } catch { /* ignore */ }
+      }
+
+      let mjPromptStr: string | null = null;
+      if (ea.promptMJ) {
+        try { mjPromptStr = JSON.parse(ea.promptMJ).en ?? ea.promptMJ; } catch { mjPromptStr = ea.promptMJ; }
+      } else if (cloud?.mjPrompt) {
+        mjPromptStr = cloud.mjPrompt;
+      }
+
+      rows.push({
+        id: ea.assetLibId ?? -(Math.random() * 1e9 | 0),
+        name: ea.name || "未命名",
+        type: (ea.type as AssetType) || "character",
+        episodeId: ea.episodeId,
+        episodeName: ep ? (ep.title || `第 ${ep.number} 集`) : "未知集数",
+        mjPrompt: mjPromptStr,
+        nanoPrompt: (ea as any).nanoPrompt || cloud?.mainPrompt,
+        uploadedImageUrl: (ea as any).uploadedImageUrl || cloud?.uploadedImageUrl,
+        mainImageUrl: (ea as any).mainImageUrl || cloud?.mainImageUrl,
+        multiViewUrls: cloud?.multiViewUrls,
+        splitImages,
+      });
+    });
+
+    cloudAssets.forEach(ca => {
+      const alreadyIn = rows.some(r => r.id === ca.id);
+      if (!alreadyIn) {
+        rows.push({
+          id: ca.id,
+          name: ca.name,
+          type: ca.type as AssetType,
+          episodeId: undefined,
+          episodeName: "未分集",
+          mjPrompt: ca.mjPrompt,
+          nanoPrompt: ca.mainPrompt,
+          uploadedImageUrl: ca.uploadedImageUrl,
+          mainImageUrl: ca.mainImageUrl,
+          multiViewUrls: ca.multiViewUrls,
+        });
+      }
+    });
+
+    return rows;
+  }, [episodeAssets, cloudAssets, scriptAnalysis]);
+
+  const episodes = scriptAnalysis?.episodes ?? [];
+  const episodeGroups = useMemo(() => {
+    const groups: { id: string; name: string; characters: AssetRow[]; scenes: AssetRow[]; props: AssetRow[] }[] = [];
+
+    episodes.forEach(ep => {
+      const epAssets = assetRows.filter(r => r.episodeId === ep.id);
+      groups.push({
+        id: ep.id,
+        name: ep.title || `第 ${ep.number} 集`,
+        characters: epAssets.filter(a => a.type === "character"),
+        scenes: epAssets.filter(a => a.type === "scene"),
+        props: epAssets.filter(a => a.type === "prop"),
+      });
+    });
+
+    const unassigned = assetRows.filter(r => !r.episodeId);
+    if (unassigned.length > 0) {
+      groups.push({
+        id: "unassigned",
+        name: "未分集",
+        characters: unassigned.filter(a => a.type === "character"),
+        scenes: unassigned.filter(a => a.type === "scene"),
+        props: unassigned.filter(a => a.type === "prop"),
+      });
+    }
+
+    return groups;
+  }, [assetRows, episodes]);
+
+  const totalAssets = assetRows.length;
+  const totalImages = assetRows.reduce((acc, r) => {
+    let count = 0;
+    if (r.mainImageUrl) count++;
+    if (r.splitImages) count += Object.values(r.splitImages).filter(Boolean).length;
+    if (r.multiViewUrls) { try { count += (JSON.parse(r.multiViewUrls) as string[]).length; } catch { /* ignore */ } }
+    return acc + count;
+  }, 0);
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const rows: Record<string, string>[] = [];
+      episodeGroups.forEach(group => {
+        const allAssets = [...group.characters, ...group.scenes, ...group.props];
+        allAssets.forEach(asset => {
+          const splitImgs = asset.splitImages ? Object.values(asset.splitImages).filter(Boolean).join(" | ") : "";
+          let multiViewImgs = "";
+          if (asset.multiViewUrls) { try { multiViewImgs = (JSON.parse(asset.multiViewUrls) as string[]).join(" | "); } catch { /* ignore */ } }
+
+          rows.push({
+            "集数": group.name,
+            "类型": TYPE_CONFIG[asset.type]?.label ?? asset.type,
+            "名称": asset.name,
+            "MJ7 提示词": asset.mjPrompt || "",
+            "Nano 辅助提示词": asset.nanoPrompt || "",
+            "参考图链接": asset.uploadedImageUrl || "",
+            "主视图链接": asset.mainImageUrl || "",
+            "切分图链接": splitImgs,
+            "多视角图链接": multiViewImgs,
+          });
+        });
+      });
+
+      if (rows.length === 0) { toast.error("暂无资产数据"); return; }
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [
+        { wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 60 }, { wch: 40 },
+        { wch: 50 }, { wch: 50 }, { wch: 80 }, { wch: 80 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "资产库");
+      XLSX.writeFile(wb, "鎏光机-资产库.xlsx");
+      toast.success("Excel 导出成功");
+    } catch (err) {
+      toast.error(`导出失败：${err instanceof Error ? err.message : "未知错误"}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    setDownloading(true);
+    try {
+      const zip = new JSZip();
+      const allImages: { url: string; filename: string }[] = [];
+
+      assetRows.forEach(asset => {
+        const safeName = asset.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, "_");
+        const epName = (asset.episodeName ?? "未分集").replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, "_");
+        const prefix = `${epName}/${TYPE_CONFIG[asset.type]?.label ?? asset.type}/${safeName}`;
+
+        if (asset.uploadedImageUrl) allImages.push({ url: asset.uploadedImageUrl, filename: `${prefix}_参考图.jpg` });
+        if (asset.mainImageUrl) allImages.push({ url: asset.mainImageUrl, filename: `${prefix}_主视图.jpg` });
+        if (asset.splitImages) {
+          const labels: Record<string, string> = { closeup: "近景", front: "正视图", side: "侧视图", back: "后视图" };
+          Object.entries(asset.splitImages).forEach(([k, v]) => {
+            if (v) allImages.push({ url: v, filename: `${prefix}_${labels[k] ?? k}.jpg` });
+          });
+        }
+        if (asset.multiViewUrls) {
+          try {
+            const urls = JSON.parse(asset.multiViewUrls) as string[];
+            urls.forEach((url, i) => allImages.push({ url, filename: `${prefix}_视角${i + 1}.jpg` }));
+          } catch { /* ignore */ }
+        }
+      });
+
+      if (allImages.length === 0) { toast.error("没有可下载的图片"); setDownloading(false); return; }
+
+      toast.info(`正在打包 ${allImages.length} 张图片，请稍候...`);
+
+      const BATCH = 5;
+      for (let i = 0; i < allImages.length; i += BATCH) {
+        const batch = allImages.slice(i, i + BATCH);
+        await Promise.all(batch.map(async ({ url, filename }) => {
+          try {
+            const resp = await fetch(url);
+            if (!resp.ok) return;
+            const blob = await resp.blob();
+            zip.file(filename, blob);
+          } catch { /* skip failed */ }
+        }));
+      }
+
+      const content = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(content);
+      a.download = "鎏光机-资产图片.zip";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success(`已打包 ${allImages.length} 张图片`);
+    } catch (err) {
+      toast.error(`打包失败：${err instanceof Error ? err.message : "未知错误"}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen" style={{ background: S.bg }}>
+      {/* 顶部导航 */}
+      <div className="sticky top-0 z-10 px-6 py-3 flex items-center justify-between" style={{ background: "oklch(0.13 0.005 240)", borderBottom: `1px solid ${S.border}` }}>
+        <div className="flex items-center gap-3">
           <Link href="/">
-            <button className="flex items-center gap-1.5 text-xs hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
-              <ArrowLeft size={14} />返回工作台
+            <button className="flex items-center gap-1.5 text-xs" style={{ color: S.dim }}>
+              <ArrowLeft className="w-3.5 h-3.5" />返回工作流
             </button>
           </Link>
-          <div className="w-px h-4" style={{ background: BORDER }} />
-          <div className="flex items-center gap-2">
-            <Layers size={15} style={{ color: GOLD }} />
-            <span className="font-bold text-sm" style={{ color: TEXT }}>资产库</span>
-          </div>
+          <span style={{ color: "oklch(0.28 0.006 240)" }}>|</span>
+          <h1 className="text-sm font-bold" style={{ color: S.text, fontFamily: S.grotesk }}>资产库</h1>
+          <Badge className="text-[10px] px-2 py-0" style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)", color: S.amber }}>
+            {totalAssets} 个资产 · {totalImages} 张图片
+          </Badge>
         </div>
-        <div className="flex items-center gap-3">
-          {user && <span className="text-xs font-mono" style={{ color: MUTED }}>余额 {user.credits.toLocaleString()} 积分</span>}
-          <button onClick={handleExport}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-            style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${BORDER}`, color: TEXT }}>
-            <Download size={12} />导出 Excel
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* ─── 左侧列表 ─────────────────────────────────────────────────────── */}
-        <div className="w-64 flex-shrink-0 border-r flex flex-col" style={{ borderColor: BORDER, background: "oklch(0.13 0.005 240)" }}>
-          {/* 类型切换 */}
-          <div className="p-3 border-b" style={{ borderColor: BORDER }}>
-            <div className="flex rounded-lg p-1" style={{ background: INPUT_BG, border: `1px solid ${BORDER}` }}>
-              {([["character", "人物", User], ["scene", "场景", Mountain]] as const).map(([t, label, Icon]) => (
-                <button key={t} onClick={() => { setActiveType(t); setSelectedId(null); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all"
-                  style={{ background: activeType === t ? GOLD : "transparent", color: activeType === t ? "oklch(0.1 0.005 240)" : MUTED }}>
-                  <Icon size={12} />{label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 新建 */}
-          <div className="p-3 border-b" style={{ borderColor: BORDER }}>
-            {showCreate ? (
-              <div className="flex flex-col gap-2">
-                <Input placeholder="资产名称" value={newName} onChange={(e) => setNewName(e.target.value)}
-                  className="h-8 text-xs" style={{ background: INPUT_BG, borderColor: BORDER, color: TEXT }} />
-                <Input placeholder="描述（可选）" value={newDesc} onChange={(e) => setNewDesc(e.target.value)}
-                  className="h-8 text-xs" style={{ background: INPUT_BG, borderColor: BORDER, color: TEXT }} />
-                <div className="flex gap-1.5">
-                  <Button size="sm" className="flex-1 h-7 text-xs" style={{ background: GOLD, color: "oklch(0.1 0.005 240)" }}
-                    disabled={!newName.trim() || createMutation.isPending}
-                    onClick={() => createMutation.mutate({ type: activeType, name: newName.trim(), description: newDesc.trim() || undefined })}>
-                    {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "创建"}
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" style={{ borderColor: BORDER, color: MUTED }}
-                    onClick={() => { setShowCreate(false); setNewName(""); setNewDesc(""); }}>取消</Button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setShowCreate(true)}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs hover:opacity-80 transition-opacity"
-                style={{ background: "oklch(0.17 0.006 240)", border: `1px dashed ${BORDER}`, color: MUTED }}>
-                <Plus size={12} />新建{activeType === "character" ? "人物" : "场景"}资产
-              </button>
-            )}
-          </div>
-
-          {/* 列表 */}
-          <div className="flex-1 overflow-y-auto p-2">
-            {isLoading ? (
-              <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin" style={{ color: MUTED }} /></div>
-            ) : assets.length === 0 ? (
-              <div className="text-center py-10">
-                <ImageIcon size={28} className="mx-auto mb-2 opacity-20" style={{ color: MUTED }} />
-                <p className="text-xs" style={{ color: MUTED }}>暂无资产</p>
-              </div>
-            ) : assets.map((asset) => (
-              <button key={asset.id} onClick={() => setSelectedId(asset.id)}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg mb-1 text-left transition-all"
-                style={{
-                  background: selectedId === asset.id ? "oklch(0.20 0.008 240)" : "transparent",
-                  border: selectedId === asset.id ? `1px solid oklch(0.35 0.012 65)` : "1px solid transparent",
-                }}>
-                <div className="w-9 h-9 rounded-md flex-shrink-0 overflow-hidden"
-                  style={{ background: "oklch(0.17 0.006 240)", border: `1px solid ${BORDER}` }}>
-                  {(asset as any).uploadedImageUrl
-                    ? <img src={(asset as any).uploadedImageUrl} alt="" className="w-full h-full object-cover" />
-                    : <div className="w-full h-full flex items-center justify-center">
-                        {activeType === "character" ? <User size={14} style={{ color: "oklch(0.38 0.008 240)" }} /> : <Mountain size={14} style={{ color: "oklch(0.38 0.008 240)" }} />}
-                      </div>
-                  }
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate" style={{ color: TEXT }}>{asset.name}</p>
-                  <p className="text-[10px]" style={{ color: MUTED }}>
-                    {asset.status === "done" ? "✓ 完成" : asset.status === "generating" ? "⟳ 生成中" : asset.status === "failed" ? "✗ 失败" : "草稿"}
-                  </p>
-                </div>
-                {selectedId === asset.id && <ChevronRight size={12} style={{ color: MUTED }} />}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ─── 右侧工作台 ──────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto">
-          {!selectedAsset ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3">
-              <Layers size={40} style={{ color: "oklch(0.25 0.008 240)" }} />
-              <p className="text-sm" style={{ color: MUTED }}>从左侧选择资产，或新建一个开始</p>
-            </div>
-          ) : (
-            <div className="p-6 max-w-3xl mx-auto space-y-5">
-              {/* 标题栏 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="text-[10px]"
-                    style={{ borderColor: "oklch(0.35 0.12 65)", color: GOLD }}>
-                    {activeType === "character" ? "人物" : "场景/道具"}
-                  </Badge>
-                  <h2 className="text-xl font-bold" style={{ color: TEXT }}>{selectedAsset.name}</h2>
-                </div>
-                <button onClick={() => deleteMutation.mutate({ id: selectedAsset.id })}
-                  disabled={deleteMutation.isPending}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-                  style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${BORDER}`, color: MUTED }}>
-                  <Trash2 size={11} />删除
-                </button>
-              </div>
-
-              {/* ── 区块一：提示词管理 ─────────────────────────────────────── */}
-              <div className="rounded-xl p-5 space-y-4" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
-                <h3 className="text-[10px] font-semibold tracking-widest uppercase" style={{ color: MUTED, fontFamily: "monospace" }}>
-                  提示词管理
-                </h3>
-
-                {/* 描述 */}
-                <div>
-                  <label className="text-xs block mb-1.5" style={{ color: "oklch(0.60 0.008 240)" }}>资产描述</label>
-                  <Input placeholder="简短描述这个资产（如：古风侠女，身着白衣）"
-                    defaultValue={selectedAsset.description ?? ""}
-                    className="text-sm" style={{ background: INPUT_BG, borderColor: BORDER, color: TEXT }}
-                    onBlur={(e) => { if (e.target.value !== (selectedAsset.description ?? "")) updateMutation.mutate({ id: selectedAsset.id, description: e.target.value }); }} />
-                </div>
-
-                {/* MJ7 提示词 */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs flex items-center gap-1.5" style={{ color: "oklch(0.60 0.008 240)" }}>
-                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "oklch(0.20 0.008 240)", color: GOLD }}>MJ7</span>
-                      Midjourney 生成提示词
-                    </label>
-                    <button onClick={() => { if ((selectedAsset as any).mjPrompt) { navigator.clipboard.writeText((selectedAsset as any).mjPrompt); toast.success("已复制"); } }}
-                      className="flex items-center gap-1 text-[10px] hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
-                      <Copy size={10} />复制
-                    </button>
-                  </div>
-                  <Textarea placeholder={"在 Midjourney 中生成参考图时使用的提示词（英文）\n例：ancient chinese female warrior, white hanfu, sword, cinematic lighting --ar 2:3 --v 7"}
-                    defaultValue={(selectedAsset as any).mjPrompt ?? ""}
-                    rows={3} className="text-sm resize-none"
-                    style={{ background: INPUT_BG, borderColor: BORDER, color: TEXT }}
-                    onBlur={(e) => { if (e.target.value !== ((selectedAsset as any).mjPrompt ?? "")) updateMutation.mutate({ id: selectedAsset.id, mjPrompt: e.target.value }); }} />
-                </div>
-
-                {/* NBP 提示词 */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs flex items-center gap-1.5" style={{ color: "oklch(0.60 0.008 240)" }}>
-                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "oklch(0.20 0.008 240)", color: ACCENT }}>NBP</span>
-                      Nano Banana Pro 辅助提示词
-                    </label>
-                    <button onClick={() => { if (selectedAsset.mainPrompt) { navigator.clipboard.writeText(selectedAsset.mainPrompt); toast.success("已复制"); } }}
-                      className="flex items-center gap-1 text-[10px] hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
-                      <Copy size={10} />复制
-                    </button>
-                  </div>
-                  <Textarea placeholder={"指导 Nano Banana Pro 生成视角图的辅助提示词（可选）\n例：maintain consistent character design, same clothing and accessories"}
-                    defaultValue={selectedAsset.mainPrompt ?? ""}
-                    rows={2} className="text-sm resize-none"
-                    style={{ background: INPUT_BG, borderColor: BORDER, color: TEXT }}
-                    onBlur={(e) => { if (e.target.value !== (selectedAsset.mainPrompt ?? "")) updateMutation.mutate({ id: selectedAsset.id, mainPrompt: e.target.value }); }} />
-                </div>
-              </div>
-
-              {/* ── 区块二：图片生成工作台 ────────────────────────────────── */}
-              <div className="rounded-xl p-5 space-y-5" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
-                <h3 className="text-[10px] font-semibold tracking-widest uppercase" style={{ color: MUTED, fontFamily: "monospace" }}>
-                  图片生成工作台
-                </h3>
-
-                <div className="grid grid-cols-2 gap-5">
-                  {/* Step 1：上传 MJ 参考图 */}
-                  <div>
-                    <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: "oklch(0.60 0.008 240)" }}>
-                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "oklch(0.20 0.008 240)", color: GOLD }}>Step 1</span>
-                      上传 MJ 参考图
-                    </p>
-                    <ImageUploadZone label="拖拽或点击上传 MJ 生成的图片"
-                      imageUrl={(selectedAsset as any).uploadedImageUrl} onUpload={handleUpload} uploading={uploading} />
-                  </div>
-
-                  {/* Step 2：生成主视图 */}
-                  <div>
-                    <p className="text-xs mb-2 flex items-center gap-1.5" style={{ color: "oklch(0.60 0.008 240)" }}>
-                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "oklch(0.20 0.008 240)", color: ACCENT }}>Step 2</span>
-                      生成主视图
-                      <span className="text-[10px]" style={{ color: MUTED }}>(-10积分)</span>
-                    </p>
-                    <div className="relative rounded-xl overflow-hidden border flex items-center justify-center"
-                      style={{ background: INPUT_BG, borderColor: selectedAsset.mainImageUrl ? "oklch(0.45 0.12 65)" : BORDER, minHeight: "200px" }}>
-                      {selectedAsset.mainImageUrl ? (
-                        <img src={selectedAsset.mainImageUrl} alt="主视图" className="w-full object-contain" style={{ maxHeight: "260px" }} />
-                      ) : generatingMain ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <Loader2 className="w-8 h-8 animate-spin" style={{ color: GOLD }} />
-                          <p className="text-xs" style={{ color: MUTED }}>生成中，约 10-20 秒...</p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-2 p-6">
-                          <ImageIcon size={28} style={{ color: "oklch(0.30 0.008 240)" }} />
-                          <p className="text-xs text-center" style={{ color: MUTED }}>
-                            {(selectedAsset as any).uploadedImageUrl ? "点击下方按钮生成主视图" : "请先上传 MJ 参考图"}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5 mt-2">
-                      <button onClick={handleGenerateMain}
-                        disabled={!(selectedAsset as any).uploadedImageUrl || generatingMain}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
-                        style={{ background: ACCENT, color: "white" }}>
-                        {generatingMain
-                          ? <><Loader2 className="w-3 h-3 animate-spin" />生成中...</>
-                          : selectedAsset.mainImageUrl
-                            ? <><RefreshCw size={12} />重新生成</>
-                            : <><Zap size={12} />生成主视图</>
-                        }
-                      </button>
-                      {selectedAsset.mainImageUrl && (
-                        <button onClick={() => setShowHistory({ imageType: "main", label: "主视图" })}
-                          className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs hover:opacity-80 transition-opacity"
-                          style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${BORDER}`, color: MUTED }}>
-                          历史
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 3：视角图 */}
-                <div className="border-t pt-5" style={{ borderColor: BORDER }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs flex items-center gap-1.5" style={{ color: "oklch(0.60 0.008 240)" }}>
-                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "oklch(0.20 0.008 240)", color: ACCENT }}>Step 3</span>
-                      {activeType === "character" ? "生成三视图" : "生成多视角图"}
-                      <span className="text-[10px]" style={{ color: MUTED }}>(-8积分/张)</span>
-                    </p>
-                    {pendingViews.length > 0 && (
-                      <button onClick={handleBatchGenerate} disabled={batchGenerating || !(selectedAsset as any).uploadedImageUrl}
-                        className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-lg hover:opacity-80 transition-opacity disabled:opacity-40"
-                        style={{ background: "oklch(0.20 0.008 240)", border: `1px solid oklch(0.35 0.12 65)`, color: GOLD }}>
-                        {batchGenerating
-                          ? <><Loader2 className="w-2.5 h-2.5 animate-spin" />生成中 {batchProgress}...</>
-                          : <><Zap size={10} />一键批量生成 ({pendingViews.length}张)</>
-                        }
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {views.map((viewType) => (
-                      <div key={viewType} className="flex flex-col gap-1.5">
-                        <div className="relative rounded-lg overflow-hidden border flex items-center justify-center"
-                          style={{ background: INPUT_BG, borderColor: multiViewUrls[viewType] ? "oklch(0.45 0.12 65)" : BORDER, aspectRatio: "1" }}>
-                          {multiViewUrls[viewType] ? (
-                            <img src={multiViewUrls[viewType]} alt={VIEW_LABELS[viewType]} className="w-full h-full object-cover" />
-                          ) : generatingViews[viewType] ? (
-                            <Loader2 className="w-6 h-6 animate-spin" style={{ color: GOLD }} />
-                          ) : (
-                            <button onClick={() => handleGenerateView(viewType)}
-                              disabled={!(selectedAsset as any).uploadedImageUrl}
-                              className="flex flex-col items-center gap-1 p-3 w-full h-full justify-center hover:opacity-80 transition-opacity disabled:opacity-30">
-                              <Plus size={18} style={{ color: MUTED }} />
-                              <span className="text-[10px]" style={{ color: MUTED }}>生成</span>
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px]" style={{ color: MUTED }}>{VIEW_LABELS[viewType]}</span>
-                          {multiViewUrls[viewType] && (
-                            <button onClick={() => setShowHistory({ imageType: viewType, label: VIEW_LABELS[viewType] })}
-                              className="text-[9px] hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
-                              历史
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleExportExcel} disabled={exporting || totalAssets === 0}
+            style={{ background: "oklch(0.65 0.2 145 / 0.1)", border: "1px solid oklch(0.65 0.2 145 / 0.35)", color: S.green }}>
+            {exporting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />}
+            导出 Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleDownloadAll} disabled={downloading || totalImages === 0}
+            style={{ background: "oklch(0.60 0.18 240 / 0.1)", border: "1px solid oklch(0.60 0.18 240 / 0.35)", color: S.blue }}>
+            {downloading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Archive className="w-3.5 h-3.5 mr-1.5" />}
+            打包下载图片
+          </Button>
         </div>
       </div>
 
-      {/* ─── 历史记录弹窗 ─────────────────────────────────────────────────── */}
-      {showHistory && selectedAsset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.7)" }}
-          onClick={() => setShowHistory(null)}>
-          <div className="rounded-2xl p-6 w-full max-w-2xl mx-4" style={{ background: "oklch(0.15 0.006 240)", border: `1px solid ${BORDER}` }}
-            onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold" style={{ color: TEXT }}>{showHistory.label} · 历史版本</h3>
-              <button onClick={() => setShowHistory(null)} className="text-xs hover:opacity-70" style={{ color: MUTED }}>关闭</button>
-            </div>
-            {historyData.length === 0 ? (
-              <p className="text-sm text-center py-8" style={{ color: MUTED }}>暂无历史记录</p>
-            ) : (
-              <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
-                {[...historyData].reverse().map((h) => {
-                  const isCurrentMain = showHistory.imageType === "main" && h.imageUrl === selectedAsset.mainImageUrl;
-                  const mv = selectedAsset.multiViewUrls ? JSON.parse(selectedAsset.multiViewUrls) : {};
-                  const isCurrentView = showHistory.imageType !== "main" && mv[showHistory.imageType] === h.imageUrl;
-                  const isCurrent = isCurrentMain || isCurrentView;
-                  return (
-                    <div key={h.id} className="relative rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
-                      style={{ border: `2px solid ${isCurrent ? GOLD : BORDER}` }}
-                      onClick={() => !isCurrent && selectHistoryMutation.mutate({ assetId: selectedAsset.id, historyId: h.id, imageType: h.imageType, imageUrl: h.imageUrl })}>
-                      <img src={h.imageUrl} alt="历史版本" className="w-full aspect-square object-cover" />
-                      <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5" style={{ background: "oklch(0 0 0 / 0.7)" }}>
-                        <p className="text-[9px]" style={{ color: isCurrent ? GOLD : "oklch(0.70 0.005 60)" }}>
-                          {isCurrent ? "✓ 当前版本" : new Date(h.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+      <div className="px-6 py-6">
+        {/* 说明栏 */}
+        <div className="mb-4 p-3 rounded text-xs flex items-center gap-3" style={{ background: "oklch(0.13 0.005 240)", border: `1px solid ${S.border}` }}>
+          <span style={{ color: S.dim }}>资产库从工作流自动同步。在人物资产（02）、场景资产（02B）、道具资产（02C）中完成生成并点击「导入资产库」后，资产将出现在此表格中。</span>
         </div>
-      )}
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color: S.amber }} />
+          </div>
+        ) : episodeGroups.length === 0 ? (
+          <div className="text-center py-16 rounded" style={{ background: "oklch(0.13 0.005 240)", border: `1px solid ${S.border}` }}>
+            <ImageIcon className="w-10 h-10 mx-auto mb-3" style={{ color: "oklch(0.30 0.006 240)" }} />
+            <p className="text-sm" style={{ color: S.dim }}>暂无资产</p>
+            <p className="text-xs mt-1" style={{ color: "oklch(0.38 0.008 240)" }}>请先在工作流中完成资产生成并导入资产库</p>
+          </div>
+        ) : (
+          <div className="rounded overflow-x-auto" style={{ border: `1px solid ${S.border}` }}>
+            <table className="w-full border-collapse" style={{ background: "oklch(0.13 0.005 240)" }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${S.border}` }}>
+                  <th className="px-4 py-3 text-left text-xs font-bold" style={{ color: S.amber, fontFamily: S.mono, width: "140px", borderRight: `1px solid ${S.border}` }}>集数</th>
+                  <th className="px-3 py-3 text-left text-xs font-bold" style={{ color: TYPE_CONFIG.character.color, fontFamily: S.mono, minWidth: "200px", borderRight: `1px solid ${S.border}` }}>
+                    <div className="flex items-center gap-1.5">{TYPE_CONFIG.character.icon}人物</div>
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-bold" style={{ color: TYPE_CONFIG.scene.color, fontFamily: S.mono, minWidth: "200px", borderRight: `1px solid ${S.border}` }}>
+                    <div className="flex items-center gap-1.5">{TYPE_CONFIG.scene.icon}场景</div>
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-bold" style={{ color: TYPE_CONFIG.prop.color, fontFamily: S.mono, minWidth: "200px" }}>
+                    <div className="flex items-center gap-1.5">{TYPE_CONFIG.prop.icon}道具</div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {episodeGroups.map((group, idx) => (
+                  <tr key={group.id} style={{ borderBottom: `1px solid ${S.border}`, background: idx % 2 === 0 ? "oklch(0.14 0.005 240)" : "oklch(0.13 0.005 240)" }}>
+                    <td className="px-4 py-3 align-top" style={{ borderRight: `1px solid ${S.border}`, verticalAlign: "top", width: "140px" }}>
+                      <p className="text-sm font-bold" style={{ color: S.text, fontFamily: S.grotesk }}>{group.name}</p>
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        {group.characters.length > 0 && <span className="text-[10px]" style={{ color: TYPE_CONFIG.character.color, fontFamily: S.mono }}>{group.characters.length} 人物</span>}
+                        {group.scenes.length > 0 && <span className="text-[10px]" style={{ color: TYPE_CONFIG.scene.color, fontFamily: S.mono }}>{group.scenes.length} 场景</span>}
+                        {group.props.length > 0 && <span className="text-[10px]" style={{ color: TYPE_CONFIG.prop.color, fontFamily: S.mono }}>{group.props.length} 道具</span>}
+                      </div>
+                    </td>
+                    <AssetCell assets={group.characters} type="character" />
+                    <AssetCell assets={group.scenes} type="scene" />
+                    <AssetCell assets={group.props} type="prop" />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-4 text-[10px]" style={{ color: "oklch(0.40 0.008 240)" }}>
+          <span>· 点击缩略图可在新标签页查看原图</span>
+          <span>· 「导出 Excel」包含所有资产名称、提示词和图片链接</span>
+          <span>· 「打包下载」将按集数/类型分文件夹打包所有图片为 ZIP</span>
+        </div>
+      </div>
     </div>
   );
 }

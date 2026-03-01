@@ -1,0 +1,8 @@
+{
+  "query": "INSERT INTO `users` (`identifier`, `identifierType`, `passwordHash`, `name`, `lastSignedIn`) VALUES ('test_direct@test.com', 'email', '$2b$10$test', '直接测试', NOW());",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute INSERT INTO `users` (`identifier`, `identifierType`, `passwordHash`, `name`, `lastSignedIn`) VALUES ('test_direct@test.com', 'email', '$2b$10$test', '直接测试', NOW());",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1062 (23000) at line 1: Duplicate entry '?' for key 'users.users_openId_unique'"
+  ]
+}

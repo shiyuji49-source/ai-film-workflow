@@ -16,8 +16,10 @@ import { nanoid } from "nanoid";
 
 // 积分消耗配置
 const CREDITS = {
-  generateMain: 10,    // 生成主视图
-  generateMulti: 8,    // 生成三视图/多视角（每张）
+  generateMain: 10,           // 生成主视图
+  generateMulti: 8,           // 生成三视图/多视角（每张）
+  generateCharDesign: 15,     // 生成人物16:9设计主图
+  splitCharDesign: 2,         // 切分设计图（每张）
 };
 
 // 通用扣积分函数
@@ -42,9 +44,9 @@ async function deductCredits(userId: number, currentCredits: number, amount: num
 export const assetsRouter = router({
   // 获取资产列表
   list: protectedProcedure
-    .input(z.object({ type: z.enum(["character", "scene"]).optional() }))
+    .input(z.object({ type: z.enum(["character", "scene", "prop"]).optional() }))
     .query(async ({ ctx, input }) => {
-      return getUserAssets(ctx.user.id, input.type);
+      return getUserAssets(ctx.user.id, input.type as "character" | "scene" | undefined);
     }),
 
   // 获取单个资产
@@ -59,7 +61,7 @@ export const assetsRouter = router({
   // 创建资产（草稿）
   create: protectedProcedure
     .input(z.object({
-      type: z.enum(["character", "scene"]),
+      type: z.enum(["character", "scene", "prop"]),
       name: z.string().min(1).max(128),
       description: z.string().optional(),
       mjPrompt: z.string().optional(),
@@ -69,7 +71,7 @@ export const assetsRouter = router({
     .mutation(async ({ ctx, input }) => {
       return createAsset({
         userId: ctx.user.id,
-        type: input.type,
+        type: input.type as "character" | "scene",
         name: input.name,
         description: input.description,
         mjPrompt: input.mjPrompt,
@@ -113,7 +115,6 @@ export const assetsRouter = router({
   uploadImage: protectedProcedure
     .input(z.object({
       id: z.number(),
-      // base64 编码的图片数据（不含 data:image/xxx;base64, 前缀）
       imageBase64: z.string().min(1),
       mimeType: z.string().default("image/png"),
     }))
@@ -123,15 +124,12 @@ export const assetsRouter = router({
 
       try {
         const imgBuffer = Buffer.from(input.imageBase64, "base64");
-        // 限制 16MB
         if (imgBuffer.length > 16 * 1024 * 1024) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "图片大小不能超过 16MB" });
         }
         const ext = input.mimeType.split("/")[1] ?? "png";
         const fileKey = `assets/${ctx.user.id}/${input.id}-upload-${nanoid(8)}.${ext}`;
         const { url: s3Url } = await storagePut(fileKey, imgBuffer, input.mimeType);
-
-        // 保存上传图 URL
         await updateAsset(input.id, ctx.user.id, { uploadedImageUrl: s3Url });
         return { success: true, uploadedImageUrl: s3Url };
       } catch (err) {
@@ -140,11 +138,11 @@ export const assetsRouter = router({
       }
     }),
 
-  // 基于上传图生成主视图（Nano Banana Pro 图生图）
-  generateMain: protectedProcedure
+  // ── 人物资产专用：生成 16:9 角色设计主图（含近景+三视图布局）──
+  generateCharacterDesign: protectedProcedure
     .input(z.object({
       id: z.number(),
-      prompt: z.string().optional(),  // 辅助提示词（可选）
+      nanoPrompt: z.string().optional(), // Nano Banana Pro 辅助提示词
     }))
     .mutation(async ({ ctx, input }) => {
       const asset = await getAssetById(input.id, ctx.user.id);
@@ -152,7 +150,135 @@ export const assetsRouter = router({
       if (!asset.uploadedImageUrl) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "请先上传 MJ 参考图" });
       }
+      if (ctx.user.credits < CREDITS.generateCharDesign) {
+        throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成角色设计图需要 ${CREDITS.generateCharDesign} 积分` });
+      }
 
+      await updateAsset(input.id, ctx.user.id, { status: "generating" });
+
+      try {
+        // 使用用户提供的 NBP 提示词，或使用默认的角色设计图提示词
+        const basePrompt = input.nanoPrompt?.trim() || "";
+        const designPrompt = basePrompt
+          ? `Professional character reference design sheet. Layout: left area (1/3) close-up face showing facial features and expression details | right area (2/3) three-pose turnaround - front standing pose, side standing pose, back standing pose. Arms slightly away from body. Pure white background, even studio lighting, no shadows, character model design sheet style, 16:9 aspect ratio. ${basePrompt}, maintain exact same style and appearance as reference`
+          : `Professional character reference design sheet. Layout: left area (1/3) close-up face showing facial features and expression details | right area (2/3) three-pose turnaround - front standing pose, side standing pose, back standing pose. Arms slightly away from body. Pure white background, even studio lighting, no shadows, character model design sheet style, 16:9 aspect ratio, maintain exact same style and appearance as reference, high quality`;
+
+        const genResult = await generateImage({
+          prompt: designPrompt,
+          originalImages: [{ url: asset.uploadedImageUrl, mimeType: "image/jpeg" }],
+        });
+        if (!genResult.url) throw new Error("图片生成返回空URL");
+
+        const imgResp = await fetch(genResult.url);
+        const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+        const fileKey = `assets/${ctx.user.id}/${input.id}-chardesign-${nanoid(8)}.png`;
+        const { url: s3Url } = await storagePut(fileKey, imgBuffer, "image/png");
+
+        await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateCharDesign, `生成角色设计主图: ${asset.name}`);
+
+        await addAssetHistory({
+          assetId: input.id,
+          userId: ctx.user.id,
+          imageType: "chardesign",
+          imageUrl: s3Url,
+          prompt: designPrompt,
+        });
+
+        await updateAsset(input.id, ctx.user.id, {
+          mainImageUrl: s3Url,
+          generationModel: "nano-banana-pro",
+          status: "done",
+          ...(input.nanoPrompt && { mainPrompt: input.nanoPrompt }),
+        });
+
+        return { success: true, imageUrl: s3Url };
+      } catch (err) {
+        await updateAsset(input.id, ctx.user.id, { status: "failed" });
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片生成失败，请重试" });
+      }
+    }),
+
+  // ── 人物资产专用：切分 16:9 设计主图为 4 张图（近景/正视/侧视/后视）──
+  splitCharacterDesign: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const asset = await getAssetById(input.id, ctx.user.id);
+      if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
+      if (!asset.mainImageUrl) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "请先生成角色设计主图" });
+      }
+
+      try {
+        const sharp = (await import("sharp")).default;
+
+        // 下载主图
+        const imgResp = await fetch(asset.mainImageUrl);
+        const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+        const metadata = await sharp(imgBuffer).metadata();
+        const W = metadata.width ?? 1600;
+        const H = metadata.height ?? 900;
+
+        // 16:9 布局：左1/3为近景，右2/3分三列（正/侧/背）
+        const leftW = Math.floor(W / 3);
+        const rightW = W - leftW;
+        const colW = Math.floor(rightW / 3);
+
+        const crops = [
+          { key: "closeup", label: "近景", left: 0, top: 0, width: leftW, height: H },
+          { key: "front",   label: "正视图", left: leftW, top: 0, width: colW, height: H },
+          { key: "side",    label: "侧视图", left: leftW + colW, top: 0, width: colW, height: H },
+          { key: "back",    label: "后视图", left: leftW + colW * 2, top: 0, width: W - (leftW + colW * 2), height: H },
+        ];
+
+        const results: Record<string, string> = {};
+        const existing = asset.multiViewUrls ? JSON.parse(asset.multiViewUrls) : {};
+
+        for (const crop of crops) {
+          const cropped = await sharp(imgBuffer)
+            .extract({ left: crop.left, top: crop.top, width: crop.width, height: crop.height })
+            .png()
+            .toBuffer();
+          const fileKey = `assets/${ctx.user.id}/${input.id}-${crop.key}-${nanoid(8)}.png`;
+          const { url: s3Url } = await storagePut(fileKey, cropped, "image/png");
+          results[crop.key] = s3Url;
+          existing[crop.key] = s3Url;
+
+          await addAssetHistory({
+            assetId: input.id,
+            userId: ctx.user.id,
+            imageType: crop.key,
+            imageUrl: s3Url,
+            prompt: `split from character design sheet: ${crop.label}`,
+          });
+        }
+
+        await updateAsset(input.id, ctx.user.id, {
+          multiViewUrls: JSON.stringify(existing),
+          status: "done",
+        });
+
+        await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.splitCharDesign * 4, `切分角色设计图: ${asset.name}`);
+
+        return { success: true, splitUrls: results };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片切分失败，请重试" });
+      }
+    }),
+
+  // 基于上传图生成主视图（Nano Banana Pro 图生图）
+  generateMain: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      prompt: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const asset = await getAssetById(input.id, ctx.user.id);
+      if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
+      if (!asset.uploadedImageUrl) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "请先上传 MJ 参考图" });
+      }
       if (ctx.user.credits < CREDITS.generateMain) {
         throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成主视图需要 ${CREDITS.generateMain} 积分` });
       }
@@ -160,28 +286,28 @@ export const assetsRouter = router({
       await updateAsset(input.id, ctx.user.id, { status: "generating" });
 
       try {
-        const typeLabel = asset.type === "character" ? "character, front view, full body" : "scene, establishing shot";
+        const typeLabel = asset.type === "scene"
+          ? "scene concept art, establishing shot, wide angle"
+          : asset.type === "prop"
+          ? "prop concept art, product view, clean background"
+          : "character, front view, full body";
         const promptText = input.prompt
           ? `${typeLabel}, ${input.prompt}, maintain exact same style and appearance as reference, high quality, 4K`
           : `${typeLabel}, maintain exact same style and appearance as reference, high quality, 4K`;
 
-        // 使用图生图模式：传入参考图
         const genResult = await generateImage({
           prompt: promptText,
           originalImages: [{ url: asset.uploadedImageUrl, mimeType: "image/jpeg" }],
         });
         if (!genResult.url) throw new Error("图片生成返回空URL");
 
-        // 下载并上传到 S3
         const imgResp = await fetch(genResult.url);
         const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
         const fileKey = `assets/${ctx.user.id}/${input.id}-main-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, imgBuffer, "image/png");
 
-        // 扣积分
         await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateMain, `生成资产主视图: ${asset.name}`);
 
-        // 保存到历史记录
         await addAssetHistory({
           assetId: input.id,
           userId: ctx.user.id,
@@ -190,7 +316,6 @@ export const assetsRouter = router({
           prompt: promptText,
         });
 
-        // 更新资产
         await updateAsset(input.id, ctx.user.id, {
           mainImageUrl: s3Url,
           generationModel: "nano-banana-pro",
@@ -219,7 +344,6 @@ export const assetsRouter = router({
       if (!asset.uploadedImageUrl) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "请先上传 MJ 参考图" });
       }
-
       if (ctx.user.credits < CREDITS.generateMulti) {
         throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成多视角图需要 ${CREDITS.generateMulti} 积分` });
       }
@@ -249,7 +373,6 @@ export const assetsRouter = router({
         const fileKey = `assets/${ctx.user.id}/${input.id}-${input.viewType}-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, imgBuffer, "image/png");
 
-        // 保存到历史记录
         await addAssetHistory({
           assetId: input.id,
           userId: ctx.user.id,
@@ -258,7 +381,6 @@ export const assetsRouter = router({
           prompt: fullPrompt,
         });
 
-        // 更新 multiViewUrls
         const existing = asset.multiViewUrls ? JSON.parse(asset.multiViewUrls) : {};
         existing[input.viewType] = s3Url;
         await updateAsset(input.id, ctx.user.id, {
@@ -266,7 +388,6 @@ export const assetsRouter = router({
           status: "done",
         });
 
-        // 扣积分
         await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateMulti, `生成资产多视角图(${input.viewType}): ${asset.name}`);
 
         return { success: true, imageUrl: s3Url, viewType: input.viewType };

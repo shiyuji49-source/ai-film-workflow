@@ -1,12 +1,12 @@
-// Phase2b: 场景资产（已从场景+道具拆分，道具移至 Phase2c）
-// 工作流：① AI 生成 MJ7 提示词 → ② 上传 MJ 参考图 → ③ Nano 生成场景多视角 4 张图 → ④ 导入资产库
+// Phase2c: 道具资产（独立页面）
+// 工作流：① AI 生成 MJ7 提示词 → ② 上传 MJ 参考图 → ③ Nano 生成一张三视图 → ④ 导入资产库
 import { useProject } from "@/contexts/ProjectContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  CheckCircle2, ChevronRight, Wand2, Copy, Check, Mountain,
+  CheckCircle2, ChevronRight, Wand2, Copy, Check, Package,
   Loader2, Upload, ImageIcon, Download, Library, RefreshCw, Plus, Trash2, ChevronDown, ChevronUp
 } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
@@ -20,7 +20,7 @@ const S = {
   green: "oklch(0.65 0.2 145)",
   blue: "oklch(0.60 0.18 240)",
   purple: "oklch(0.65 0.18 290)",
-  teal: "oklch(0.65 0.15 185)",
+  orange: "oklch(0.70 0.18 55)",
   dim: "oklch(0.55 0.01 240)",
   text: "oklch(0.88 0.005 60)",
   sub: "oklch(0.70 0.008 240)",
@@ -50,7 +50,7 @@ function ImageUploadZone({ imageUrl, onUpload, uploading }: { imageUrl?: string 
   }, [onUpload]);
   return (
     <div className="relative border-2 border-dashed rounded-lg overflow-hidden cursor-pointer transition-all"
-      style={{ borderColor: imageUrl ? "oklch(0.45 0.12 185)" : "oklch(0.28 0.008 240)", background: "oklch(0.10 0.004 240)", minHeight: "120px" }}
+      style={{ borderColor: imageUrl ? "oklch(0.45 0.12 55)" : "oklch(0.28 0.008 240)", background: "oklch(0.10 0.004 240)", minHeight: "120px" }}
       onClick={() => inputRef.current?.click()}
       onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith("image/")) handleFile(f); }}
       onDragOver={(e) => e.preventDefault()}>
@@ -64,21 +64,21 @@ function ImageUploadZone({ imageUrl, onUpload, uploading }: { imageUrl?: string 
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center gap-2 p-4" style={{ minHeight: "120px" }}>
-          {uploading ? <Loader2 className="w-5 h-5 animate-spin" style={{ color: S.teal }} /> : <><Upload className="w-5 h-5" style={{ color: "oklch(0.35 0.008 240)" }} /><p className="text-xs text-center" style={{ color: S.dim }}>点击或拖拽上传 MJ 参考图</p></>}
+          {uploading ? <Loader2 className="w-5 h-5 animate-spin" style={{ color: S.orange }} /> : <><Upload className="w-5 h-5" style={{ color: "oklch(0.35 0.008 240)" }} /><p className="text-xs text-center" style={{ color: S.dim }}>点击或拖拽上传 MJ 参考图</p></>}
         </div>
       )}
     </div>
   );
 }
 
-function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
+function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
   const { projectInfo, updateEpisodeAsset, removeEpisodeAsset, scriptAnalysis } = useProject();
   const { isAuthenticated } = useAuth();
   const utils = trpc.useUtils();
 
   const [uploading, setUploading] = useState(false);
   const [generatingMJ, setGeneratingMJ] = useState(false);
-  const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
+  const [generatingTriview, setGeneratingTriview] = useState(false);
   const [importing, setImporting] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -91,7 +91,7 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
 
   const getOrCreateAssetId = async (): Promise<number> => {
     if (asset.assetLibId) return asset.assetLibId;
-    const a = await createAssetMutation.mutateAsync({ type: "scene", name: asset.name || "未命名场景", description: asset.description || "", mjPrompt: parsedPrompt?.en, mainPrompt: asset.nanoPrompt || undefined });
+    const a = await createAssetMutation.mutateAsync({ type: "prop", name: asset.name || "未命名道具", description: asset.description || "", mjPrompt: parsedPrompt?.en, mainPrompt: asset.nanoPrompt || undefined });
     updateEpisodeAsset(asset.id, { assetLibId: a.id });
     return a.id;
   };
@@ -100,9 +100,9 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
     setGeneratingMJ(true);
     try {
       const ep = scriptAnalysis?.episodes?.find(e => e.id === asset.episodeId);
-      const result = await generateMJMutation.mutateAsync({ type: "scene", name: asset.name || "场景", description: asset.description || asset.name || "场景", episodeContext: ep ? `第${ep.number}集《${ep.title}》：${ep.synopsis}` : undefined, styleZh: projectInfo.styleZh, styleEn: projectInfo.styleEn });
+      const result = await generateMJMutation.mutateAsync({ type: "prop", name: asset.name || "道具", description: asset.description || asset.name || "道具", episodeContext: ep ? `第${ep.number}集《${ep.title}》：${ep.synopsis}` : undefined, styleZh: projectInfo.styleZh, styleEn: projectInfo.styleEn });
       updateEpisodeAsset(asset.id, { promptMJ: JSON.stringify(result) });
-      toast.success(`${asset.name || "场景"} MJ7 提示词已生成`);
+      toast.success(`${asset.name || "道具"} MJ7 提示词已生成`);
     } catch (err) { toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`); }
     finally { setGeneratingMJ(false); }
   };
@@ -120,41 +120,38 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
     finally { setUploading(false); }
   };
 
-  const VIEW_TYPES: { viewType: "front" | "angle1" | "angle2" | "angle3"; label: string; key: keyof EpisodeAsset }[] = [
-    { viewType: "front", label: "正面全景", key: "mainImageUrl" },
-    { viewType: "angle1", label: "3/4视角", key: "angle1ImageUrl" },
-    { viewType: "angle2", label: "俯视角", key: "angle2ImageUrl" },
-    { viewType: "angle3", label: "仰视角", key: "angle3ImageUrl" },
-  ];
-
-  const handleGenerateView = async (viewType: "front" | "angle1" | "angle2" | "angle3", key: keyof EpisodeAsset) => {
+  // 道具只生成一张三视图（front/side/back 合并在一张图里，用 front 视角触发）
+  const handleGenerateTriview = async () => {
     if (!asset.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
     if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
-    setGeneratingViews(p => ({ ...p, [viewType]: true }));
+    setGeneratingTriview(true);
     try {
       const assetId = await getOrCreateAssetId();
-      const result = await generateMultiMutation.mutateAsync({ id: assetId, viewType, prompt: asset.nanoPrompt || undefined });
-      updateEpisodeAsset(asset.id, { [key]: result.imageUrl });
+      // 使用 front 视角，Nano 提示词中指定三视图布局
+      const triviewPrompt = `product three-view design sheet, front view, side view, back view, clean white background, studio lighting, no shadows${asset.nanoPrompt ? `, ${asset.nanoPrompt}` : ""}`;
+      const result = await generateMultiMutation.mutateAsync({ id: assetId, viewType: "front", prompt: triviewPrompt });
+      updateEpisodeAsset(asset.id, { mainImageUrl: result.imageUrl });
       utils.assets.list.invalidate();
-      toast.success(`${VIEW_TYPES.find(v => v.viewType === viewType)?.label} 生成完成`);
+      toast.success("三视图生成完成！");
     } catch (err) { toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`); }
-    finally { setGeneratingViews(p => ({ ...p, [viewType]: false })); }
+    finally { setGeneratingTriview(false); }
   };
 
   const handleImport = async () => {
     if (!isAuthenticated) { toast.error("请先登录后再导入资产库"); return; }
     setImporting(true);
-    try { const assetId = await getOrCreateAssetId(); utils.assets.list.invalidate(); toast.success(`${asset.name || "场景"} 已导入资产库（ID: ${assetId}）`); }
+    try { const assetId = await getOrCreateAssetId(); utils.assets.list.invalidate(); toast.success(`${asset.name || "道具"} 已导入资产库（ID: ${assetId}）`); }
     catch (err) { toast.error(`导入失败：${err instanceof Error ? err.message : "未知错误"}`); }
     finally { setImporting(false); }
   };
 
   return (
     <div className="p-4 space-y-4" style={S.card}>
+      {/* 标题行 */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Mountain className="w-4 h-4 flex-shrink-0" style={{ color: S.teal }} />
-          <input value={asset.name} onChange={e => updateEpisodeAsset(asset.id, { name: e.target.value })} placeholder="场景名称" className="bg-transparent text-sm font-bold border-none outline-none flex-1 min-w-0" style={{ color: S.text, fontFamily: S.grotesk }} />
+          <Package className="w-4 h-4 flex-shrink-0" style={{ color: S.orange }} />
+          <input value={asset.name} onChange={e => updateEpisodeAsset(asset.id, { name: e.target.value })} placeholder="道具名称" className="bg-transparent text-sm font-bold border-none outline-none flex-1 min-w-0" style={{ color: S.text, fontFamily: S.grotesk }} />
           {asset.assetLibId && <Badge className="text-xs px-1.5 py-0 flex-shrink-0" style={{ background: "oklch(0.65 0.2 145 / 0.15)", border: "1px solid oklch(0.65 0.2 145 / 0.4)", color: S.green }}><CheckCircle2 className="w-2.5 h-2.5 mr-1" />已入库</Badge>}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -168,7 +165,7 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
 
       {!collapsed && (
         <>
-          <input value={asset.description} onChange={e => updateEpisodeAsset(asset.id, { description: e.target.value })} placeholder="场景描述（如：废弃工厂，夜晚，霓虹灯光）" className="w-full bg-transparent text-xs border-b outline-none pb-1" style={{ color: S.sub, borderColor: "oklch(0.22 0.006 240)", fontFamily: S.mono }} />
+          <input value={asset.description} onChange={e => updateEpisodeAsset(asset.id, { description: e.target.value })} placeholder="道具描述（如：未来科技感激光剑，蓝色光刃）" className="w-full bg-transparent text-xs border-b outline-none pb-1" style={{ color: S.sub, borderColor: "oklch(0.22 0.006 240)", fontFamily: S.mono }} />
 
           {/* STEP 1: MJ7 提示词 */}
           <div className="space-y-2">
@@ -193,11 +190,11 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
                 </div>
               </div>
             ) : (
-              <div className="p-3 rounded text-xs text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)", color: S.dim }}>点击「AI 生成」，Gemini AI 将基于场景信息生成专属 MJ7 提示词</div>
+              <div className="p-3 rounded text-xs text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)", color: S.dim }}>点击「AI 生成」，Gemini AI 将基于道具信息生成专属 MJ7 提示词</div>
             )}
           </div>
 
-          {/* STEP 2: 上传 + Nano 提示词 */}
+          {/* STEP 2: 上传 MJ 参考图 + Nano 辅助提示词 */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.55 0.18 290 / 0.15)", border: "1px solid oklch(0.55 0.18 290 / 0.3)", color: S.purple, fontFamily: S.mono }}>STEP 2</span>
@@ -210,40 +207,41 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
               </div>
               <div>
                 <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>Nano 辅助提示词（可选）</p>
-                <Textarea value={asset.nanoPrompt || ""} onChange={e => updateEpisodeAsset(asset.id, { nanoPrompt: e.target.value })} placeholder={`输入 Nano Banana Pro 辅助提示词...\n例如：cinematic lighting, wide angle, atmospheric fog`} rows={5} className="text-xs resize-none" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.85 0.005 60)", fontFamily: S.mono }} />
+                <Textarea value={asset.nanoPrompt || ""} onChange={e => updateEpisodeAsset(asset.id, { nanoPrompt: e.target.value })} placeholder={`输入 Nano Banana Pro 辅助提示词...\n例如：product display, studio lighting, clean background`} rows={5} className="text-xs resize-none" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.85 0.005 60)", fontFamily: S.mono }} />
               </div>
             </div>
           </div>
 
-          {/* STEP 3: 生成多视角 4 张图 */}
+          {/* STEP 3: 生成三视图（一张图包含正/侧/背） */}
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.60 0.18 240 / 0.15)", border: "1px solid oklch(0.60 0.18 240 / 0.3)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
-              <span className="text-xs font-semibold" style={{ color: S.blue }}>Nano 生成场景多视角图（4张）</span>
-              {!asset.uploadedImageUrl && <span className="text-[10px]" style={{ color: S.dim }}>请先上传参考图</span>}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.60 0.18 240 / 0.15)", border: "1px solid oklch(0.60 0.18 240 / 0.3)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
+                <span className="text-xs font-semibold" style={{ color: S.blue }}>Nano 生成三视图（正面 / 侧面 / 背面）</span>
+                {!asset.uploadedImageUrl && <span className="text-[10px]" style={{ color: S.dim }}>请先上传参考图</span>}
+              </div>
+              <Button size="sm" onClick={handleGenerateTriview} disabled={generatingTriview || !asset.uploadedImageUrl}
+                style={{ background: asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.60 0.18 240 / 0.12)", border: `1px solid ${asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.60 0.18 240 / 0.35)"}`, color: asset.mainImageUrl ? S.purple : S.blue }}>
+                {generatingTriview ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : asset.mainImageUrl ? <><RefreshCw className="w-3 h-3 mr-1" />重新生成</> : <><Wand2 className="w-3 h-3 mr-1" />生成三视图</>}
+              </Button>
             </div>
-            <div className="grid grid-cols-4 gap-2">
-              {VIEW_TYPES.map(({ viewType, label, key }) => {
-                const url = asset[key] as string | undefined;
-                const isGenerating = !!generatingViews[viewType];
-                return (
-                  <div key={viewType} className="space-y-1">
-                    <div className="rounded overflow-hidden" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", aspectRatio: "16/9" }}>
-                      {url ? <img src={url} alt={label} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-4 h-4" style={{ color: "oklch(0.30 0.006 240)" }} /></div>}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px]" style={{ color: S.dim }}>{label}</span>
-                      <div className="flex items-center gap-1">
-                        {url && <a href={url} download target="_blank" rel="noreferrer" className="hover:opacity-80" style={{ color: "oklch(0.45 0.01 240)" }}><Download className="w-3 h-3" /></a>}
-                        <button onClick={() => handleGenerateView(viewType, key)} disabled={isGenerating || !asset.uploadedImageUrl} className="p-0.5 rounded disabled:opacity-40 transition-all" style={{ color: url ? S.purple : S.blue }}>
-                          {isGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : url ? <RefreshCw className="w-3 h-3" /> : <Wand2 className="w-3 h-3" />}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {asset.mainImageUrl ? (
+              <div className="rounded overflow-hidden" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)" }}>
+                <img src={asset.mainImageUrl} alt="三视图" className="w-full object-contain" style={{ maxHeight: "280px" }} />
+                <div className="flex items-center justify-between px-3 py-2" style={{ borderTop: "1px solid oklch(0.20 0.006 240)" }}>
+                  <span className="text-[10px]" style={{ color: S.dim }}>道具三视图（正面 / 侧面 / 背面）</span>
+                  <a href={asset.mainImageUrl} download target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[10px] hover:opacity-80" style={{ color: "oklch(0.55 0.01 240)" }}>
+                    <Download className="w-3 h-3" />下载
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6 rounded text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)" }}>
+                <ImageIcon className="w-6 h-6 mx-auto mb-2" style={{ color: "oklch(0.30 0.006 240)" }} />
+                <p className="text-xs" style={{ color: S.dim }}>上传参考图后，点击「生成三视图」</p>
+                <p className="text-[10px] mt-1" style={{ color: "oklch(0.38 0.008 240)" }}>Nano Banana Pro 将生成包含正面/侧面/背面的道具三视图</p>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -254,41 +252,41 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
 function EpisodeSection({ episodeId, episodeTitle }: { episodeId: string; episodeTitle: string }) {
   const { episodeAssets, addEpisodeAsset } = useProject();
   const [collapsed, setCollapsed] = useState(false);
-  const scenes = episodeAssets.filter(a => a.episodeId === episodeId && a.type === "scene");
+  const props = episodeAssets.filter(a => a.episodeId === episodeId && a.type === "prop");
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between p-3 rounded cursor-pointer" style={{ background: "oklch(0.13 0.005 240)", border: "1px solid oklch(0.20 0.006 240)" }} onClick={() => setCollapsed(c => !c)}>
         <div className="flex items-center gap-3">
-          <Mountain className="w-4 h-4" style={{ color: S.teal }} />
+          <Package className="w-4 h-4" style={{ color: S.orange }} />
           <span className="font-semibold text-sm" style={{ color: S.text, fontFamily: S.grotesk }}>{episodeTitle}</span>
-          <span className="text-xs px-2 py-0.5 rounded" style={{ background: "oklch(0.65 0.15 185 / 0.15)", border: "1px solid oklch(0.65 0.15 185 / 0.3)", color: S.teal, fontFamily: S.mono }}>{scenes.length} 场景</span>
+          <span className="text-xs px-2 py-0.5 rounded" style={{ background: "oklch(0.70 0.18 55 / 0.15)", border: "1px solid oklch(0.70 0.18 55 / 0.3)", color: S.orange, fontFamily: S.mono }}>{props.length} 道具</span>
         </div>
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-          <Button size="sm" onClick={() => addEpisodeAsset(episodeId, "scene")} style={{ background: "oklch(0.65 0.15 185 / 0.12)", border: "1px solid oklch(0.65 0.15 185 / 0.35)", color: S.teal }}><Plus className="w-3 h-3 mr-1" />添加场景</Button>
+          <Button size="sm" onClick={() => addEpisodeAsset(episodeId, "prop")} style={{ background: "oklch(0.70 0.18 55 / 0.12)", border: "1px solid oklch(0.70 0.18 55 / 0.35)", color: S.orange }}><Plus className="w-3 h-3 mr-1" />添加道具</Button>
           <button onClick={() => setCollapsed(c => !c)} style={{ color: S.dim }}>{collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}</button>
         </div>
       </div>
       {!collapsed && (
         <div className="space-y-3 pl-4">
-          {scenes.length === 0 ? <div className="p-4 text-center rounded" style={{ background: "oklch(0.12 0.005 240)", border: "1px dashed oklch(0.22 0.006 240)" }}><p className="text-xs" style={{ color: S.dim }}>暂无场景，点击「添加场景」开始</p></div> : scenes.map(asset => <SceneAssetCard key={asset.id} asset={asset} />)}
+          {props.length === 0 ? <div className="p-4 text-center rounded" style={{ background: "oklch(0.12 0.005 240)", border: "1px dashed oklch(0.22 0.006 240)" }}><p className="text-xs" style={{ color: S.dim }}>暂无道具，点击「添加道具」开始</p></div> : props.map(asset => <PropAssetCard key={asset.id} asset={asset} />)}
         </div>
       )}
     </div>
   );
 }
 
-export default function Phase2b() {
+export default function Phase2c() {
   const { scriptAnalysis, episodeAssets, markPhaseComplete, setActivePhase } = useProject();
   const episodes = scriptAnalysis?.episodes ?? [];
-  const totalScenes = episodeAssets.filter(a => a.type === "scene").length;
+  const totalProps = episodeAssets.filter(a => a.type === "prop").length;
 
   return (
     <div className="space-y-8">
       <div className="flex items-start gap-4">
-        <div className="flex-shrink-0 w-12 h-12 rounded flex items-center justify-center text-lg font-bold" style={{ background: "oklch(0.65 0.15 185 / 0.15)", border: "1px solid oklch(0.65 0.15 185 / 0.4)", color: S.teal, fontFamily: S.mono }}>2B</div>
+        <div className="flex-shrink-0 w-12 h-12 rounded flex items-center justify-center text-lg font-bold" style={{ background: "oklch(0.70 0.18 55 / 0.15)", border: "1px solid oklch(0.70 0.18 55 / 0.4)", color: S.orange, fontFamily: S.mono }}>2C</div>
         <div>
-          <h2 className="text-xl font-bold mb-1" style={{ color: S.text, fontFamily: S.grotesk }}>场景资产</h2>
-          <p className="text-sm" style={{ color: S.sub }}>MJ7 提示词 → 上传参考图 → Nano Banana Pro 生成场景多视角 4 张图 → 导入资产库</p>
+          <h2 className="text-xl font-bold mb-1" style={{ color: S.text, fontFamily: S.grotesk }}>道具资产</h2>
+          <p className="text-sm" style={{ color: S.sub }}>MJ7 提示词 → 上传参考图 → Nano Banana Pro 生成一张三视图（正面/侧面/背面）→ 导入资产库</p>
         </div>
       </div>
 
@@ -298,13 +296,13 @@ export default function Phase2b() {
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.55 0.18 290 / 0.15)", color: S.purple, fontFamily: S.mono }}>STEP 2</span>上传 MJ 参考图 + Nano 辅助提示词</div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
-          <div className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.60 0.18 240 / 0.15)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>Nano 生成正面全景 / 3/4视角 / 俯视 / 仰视</div>
+          <div className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.60 0.18 240 / 0.15)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>Nano 生成道具三视图（正面/侧面/背面）</div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5"><Library className="w-3 h-3" style={{ color: S.green }} />导入资产库</div>
         </div>
       </div>
 
-      {totalScenes > 0 && <div className="flex items-center gap-2 text-xs" style={{ color: S.dim }}><Mountain className="w-3.5 h-3.5" style={{ color: S.teal }} />共 {totalScenes} 个场景资产</div>}
+      {totalProps > 0 && <div className="flex items-center gap-2 text-xs" style={{ color: S.dim }}><Package className="w-3.5 h-3.5" style={{ color: S.orange }} />共 {totalProps} 个道具资产</div>}
 
       {episodes.length === 0 ? (
         <div className="p-8 text-center rounded" style={S.card}><p className="text-sm" style={{ color: S.dim }}>请先在阶段一完成剧本解析，系统将自动提取分集信息</p></div>
@@ -313,8 +311,8 @@ export default function Phase2b() {
       )}
 
       <div className="flex justify-end pt-4 border-t" style={{ borderColor: "oklch(0.22 0.006 240)" }}>
-        <Button onClick={() => { markPhaseComplete("phase2b"); setActivePhase("phase2c"); }} className="gap-2" style={{ background: "oklch(0.65 0.15 185)", color: "oklch(0.10 0.005 240)", fontWeight: 700 }}>
-          场景资产完成，进入道具资产<ChevronRight className="w-4 h-4" />
+        <Button onClick={() => { markPhaseComplete("phase2c"); setActivePhase("phase3"); }} className="gap-2" style={{ background: "oklch(0.70 0.18 55)", color: "oklch(0.10 0.005 240)", fontWeight: 700 }}>
+          道具资产完成，进入分镜脚本<ChevronRight className="w-4 h-4" />
         </Button>
       </div>
     </div>

@@ -1,0 +1,32 @@
+{
+  "query": "SHOW CREATE TABLE users;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SHOW CREATE TABLE users;",
+  "rows": [
+    {
+      "Table": "users",
+      "Create Table": "CREATE TABLE `users` ("
+    }
+  ],
+  "messages": [
+    "  `id` int NOT NULL AUTO_INCREMENT,",
+    "  `openId` varchar(64) NOT NULL DEFAULT '',",
+    "  `name` text DEFAULT NULL,",
+    "  `email` varchar(320) DEFAULT NULL,",
+    "  `loginMethod` varchar(64) DEFAULT NULL,",
+    "  `role` enum('user','admin') NOT NULL DEFAULT 'user',",
+    "  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,",
+    "  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,",
+    "  `lastSignedIn` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,",
+    "  `identifier` varchar(320) DEFAULT NULL,",
+    "  `identifierType` enum('email','phone') DEFAULT NULL,",
+    "  `passwordHash` varchar(256) DEFAULT NULL,",
+    "  `credits` int NOT NULL DEFAULT '10000',",
+    "  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */,",
+    "  UNIQUE KEY `users_openId_unique` (`openId`),",
+    "  UNIQUE KEY `idx_users_identifier` (`identifier`)",
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin AUTO_INCREMENT=180001"
+  ],
+  "stdout": "Table\tCreate Table\nusers\tCREATE TABLE `users` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `openId` varchar(64) NOT NULL DEFAULT '',\n  `name` text DEFAULT NULL,\n  `email` varchar(320) DEFAULT NULL,\n  `loginMethod` varchar(64) DEFAULT NULL,\n  `role` enum('user','admin') NOT NULL DEFAULT 'user',\n  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  `lastSignedIn` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `identifier` varchar(320) DEFAULT NULL,\n  `identifierType` enum('email','phone') DEFAULT NULL,\n  `passwordHash` varchar(256) DEFAULT NULL,\n  `credits` int NOT NULL DEFAULT '10000',\n  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */,\n  UNIQUE KEY `users_openId_unique` (`openId`),\n  UNIQUE KEY `idx_users_identifier` (`identifier`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin AUTO_INCREMENT=180001\n",
+  "stderr": "",
+  "execution_time_ms": 1549
+}

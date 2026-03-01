@@ -1,13 +1,13 @@
-// Phase2: 人物与机甲资产
-// 工作流：① AI 生成 MJ7 提示词 → ② 用 MJ7 生成图后上传 → ③ 填写 Nano 辅助提示词 → ④ 生成主视图/三视图 → ⑤ 导入资产库
+// Phase2: 人物资产
+// 工作流：① AI 生成 MJ7 提示词 → ② 上传 MJ 参考图 + Nano 提示词 → ③ 生成16:9角色设计主图 → ④ 一键切分4张（近景/正视/侧视/后视）→ ⑤ 导入资产库
 import { useProject } from "@/contexts/ProjectContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  CheckCircle2, ChevronRight, Wand2, Copy, Check, Bot, User,
-  Loader2, Upload, ImageIcon, Download, Library, RefreshCw
+  ChevronRight, Wand2, Copy, Check, Loader2, Upload, ImageIcon,
+  Download, Library, RefreshCw, Scissors, CheckCircle2, Bot, User
 } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
@@ -112,44 +112,6 @@ function ImageUploadZone({
   );
 }
 
-// ─── ViewImage ────────────────────────────────────────────────────────────────
-function ViewImage({ url, label, onGenerate, generating, disabled }: {
-  url?: string | null;
-  label: string;
-  onGenerate: () => void;
-  generating: boolean;
-  disabled: boolean;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] font-semibold" style={{ color: S.dim, fontFamily: S.mono }}>{label}</span>
-        <button
-          onClick={onGenerate}
-          disabled={generating || disabled}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-all disabled:opacity-40"
-          style={{
-            background: url ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.65 0.2 145 / 0.12)",
-            border: `1px solid ${url ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.65 0.2 145 / 0.35)"}`,
-            color: url ? S.purple : S.green,
-            fontFamily: S.mono,
-          }}>
-          {generating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : url ? <RefreshCw className="w-2.5 h-2.5" /> : <Wand2 className="w-2.5 h-2.5" />}
-          {generating ? "生成中" : url ? "重新生成" : "生成"}
-        </button>
-      </div>
-      <div className="rounded overflow-hidden" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.20 0.006 240)", minHeight: "100px" }}>
-        {url
-          ? <img src={url} alt={label} className="w-full object-contain" style={{ maxHeight: "160px" }} />
-          : <div className="flex items-center justify-center" style={{ minHeight: "100px" }}>
-            <ImageIcon className="w-5 h-5" style={{ color: "oklch(0.30 0.006 240)" }} />
-          </div>
-        }
-      </div>
-    </div>
-  );
-}
-
 // ─── CharacterCard ────────────────────────────────────────────────────────────
 function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characters"][0] }) {
   const { projectInfo, updateCharacter } = useProject();
@@ -158,15 +120,15 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
 
   const [uploading, setUploading] = useState(false);
   const [generatingMJ, setGeneratingMJ] = useState(false);
-  const [generatingMain, setGeneratingMain] = useState(false);
-  const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
+  const [generatingDesign, setGeneratingDesign] = useState(false);
+  const [splitting, setSplitting] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const generateMJMutation = trpc.ai.generateCharacterPrompt.useMutation();
   const createAssetMutation = trpc.assets.create.useMutation();
   const uploadMutation = trpc.assets.uploadImage.useMutation();
-  const generateMainMutation = trpc.assets.generateMain.useMutation();
-  const generateMultiMutation = trpc.assets.generateMultiView.useMutation();
+  const generateDesignMutation = trpc.assets.generateCharacterDesign.useMutation();
+  const splitDesignMutation = trpc.assets.splitCharacterDesign.useMutation();
 
   // 获取或创建资产库 ID
   const getOrCreateAssetId = async (): Promise<number> => {
@@ -222,61 +184,58 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
     }
   };
 
-  // 生成主视图
-  const handleGenerateMain = async () => {
+  // 生成 16:9 角色设计主图
+  const handleGenerateDesign = async () => {
     if (!char.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
     if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
-    setGeneratingMain(true);
+    setGeneratingDesign(true);
     try {
       const assetId = await getOrCreateAssetId();
-      // 同步 nanoPrompt 到资产库
-      if (char.nanoPrompt) {
-        await createAssetMutation.mutateAsync({ type: "character", name: char.name, description: char.appearance || "", mainPrompt: char.nanoPrompt }).catch(() => {});
-      }
-      const result = await generateMainMutation.mutateAsync({ id: assetId, prompt: char.nanoPrompt || undefined });
-      updateCharacter(char.id, { mainImageUrl: result.imageUrl });
+      const result = await generateDesignMutation.mutateAsync({
+        id: assetId,
+        nanoPrompt: char.nanoPrompt || undefined,
+      });
+      updateCharacter(char.id, { designImageUrl: result.imageUrl, mainImageUrl: result.imageUrl });
       utils.assets.list.invalidate();
-      toast.success("主视图生成完成！");
+      toast.success("角色设计主图生成完成！");
     } catch (err) {
       toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
-      setGeneratingMain(false);
+      setGeneratingDesign(false);
     }
   };
 
-  // 生成单个视角图
-  const handleGenerateView = async (viewType: "front" | "side" | "back") => {
-    if (!char.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
-    if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
-    setGeneratingViews(p => ({ ...p, [viewType]: true }));
+  // 一键切分 4 张图
+  const handleSplit = async () => {
+    const designImg = char.designImageUrl || char.mainImageUrl;
+    if (!designImg) { toast.error("请先生成角色设计主图"); return; }
+    if (!isAuthenticated) { toast.error("请先登录后再切分图片"); return; }
+    setSplitting(true);
     try {
       const assetId = await getOrCreateAssetId();
-      const result = await generateMultiMutation.mutateAsync({ id: assetId, viewType, prompt: char.nanoPrompt || undefined });
-      const urlKey = viewType === "front" ? "frontImageUrl" : viewType === "side" ? "sideImageUrl" : "backImageUrl";
-      updateCharacter(char.id, { [urlKey]: result.imageUrl });
+      const result = await splitDesignMutation.mutateAsync({ id: assetId });
+      const urls = result.splitUrls as Record<string, string>;
+      updateCharacter(char.id, {
+        closeupImageUrl: urls.closeup,
+        frontImageUrl: urls.front,
+        sideImageUrl: urls.side,
+        backImageUrl: urls.back,
+      });
       utils.assets.list.invalidate();
-      toast.success(`${viewType === "front" ? "正面" : viewType === "side" ? "侧面" : "背面"}视图生成完成`);
+      toast.success("已成功切分为 4 张视图");
     } catch (err) {
-      toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`);
+      toast.error(`切分失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
-      setGeneratingViews(p => ({ ...p, [viewType]: false }));
+      setSplitting(false);
     }
   };
 
-  // 导入资产库（确保资产库已有最新数据）
+  // 导入资产库
   const handleImport = async () => {
     if (!isAuthenticated) { toast.error("请先登录后再导入资产库"); return; }
     setImporting(true);
     try {
       const assetId = await getOrCreateAssetId();
-      // 更新资产库中的提示词
-      await createAssetMutation.mutateAsync({
-        type: "character",
-        name: char.name,
-        description: char.appearance || char.name,
-        mjPrompt: char.promptEn || undefined,
-        mainPrompt: char.nanoPrompt || undefined,
-      }).catch(() => {});
       utils.assets.list.invalidate();
       toast.success(`${char.name} 已导入资产库（ID: ${assetId}）`);
     } catch (err) {
@@ -286,10 +245,11 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
     }
   };
 
-  const hasImages = char.mainImageUrl || char.frontImageUrl || char.sideImageUrl || char.backImageUrl;
+  const designImage = char.designImageUrl || char.mainImageUrl;
+  const hasSplitImages = char.closeupImageUrl || char.frontImageUrl || char.sideImageUrl || char.backImageUrl;
 
   return (
-    <div className="p-4 space-y-4" style={S.card}>
+    <div className="p-4 space-y-5" style={S.card}>
       {/* 人物标题 */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -397,7 +357,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
             <Textarea
               value={char.nanoPrompt || ""}
               onChange={e => updateCharacter(char.id, { nanoPrompt: e.target.value })}
-              placeholder={`输入 Nano Banana Pro 辅助提示词...\n例如：character, front view, full body, maintain exact same style`}
+              placeholder={`输入 Nano Banana Pro 辅助提示词...\n\n参考：写实风格，电影感打光，精细服装细节`}
               rows={5}
               className="text-xs resize-none"
               style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.85 0.005 60)", fontFamily: S.mono }}
@@ -406,99 +366,121 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
         </div>
       </div>
 
-      {/* STEP 3: 生成主视图 + 三视图 */}
+      {/* STEP 3: 生成 16:9 角色设计主图 */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.60 0.18 240 / 0.15)", border: "1px solid oklch(0.60 0.18 240 / 0.3)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
-            <span className="text-xs font-semibold" style={{ color: S.blue, fontFamily: S.grotesk }}>Nano Banana Pro 生成视图</span>
+            <span className="text-xs font-semibold" style={{ color: S.blue, fontFamily: S.grotesk }}>生成角色设计主图（16:9）</span>
           </div>
-          {!char.uploadedImageUrl && (
-            <span className="text-[10px]" style={{ color: S.dim }}>请先上传 MJ 参考图</span>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {/* 主视图 */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold" style={{ color: S.dim, fontFamily: S.mono }}>主视图（精修）</span>
-              <button
-                onClick={handleGenerateMain}
-                disabled={generatingMain || !char.uploadedImageUrl}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-all disabled:opacity-40"
-                style={{
-                  background: char.mainImageUrl ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.65 0.2 145 / 0.12)",
-                  border: `1px solid ${char.mainImageUrl ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.65 0.2 145 / 0.35)"}`,
-                  color: char.mainImageUrl ? S.purple : S.green,
-                  fontFamily: S.mono,
-                }}>
-                {generatingMain ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : char.mainImageUrl ? <RefreshCw className="w-2.5 h-2.5" /> : <Wand2 className="w-2.5 h-2.5" />}
-                {generatingMain ? "生成中" : char.mainImageUrl ? "重新生成" : "生成 (10积分)"}
-              </button>
-            </div>
-            <div className="rounded overflow-hidden" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.20 0.006 240)", minHeight: "120px" }}>
-              {char.mainImageUrl
-                ? <img src={char.mainImageUrl} alt="主视图" className="w-full object-contain" style={{ maxHeight: "180px" }} />
-                : <div className="flex items-center justify-center" style={{ minHeight: "120px" }}>
-                  <ImageIcon className="w-5 h-5" style={{ color: "oklch(0.30 0.006 240)" }} />
-                </div>
+          <div className="flex gap-2">
+            <Button size="sm"
+              onClick={handleGenerateDesign}
+              disabled={generatingDesign || !char.uploadedImageUrl}
+              style={{
+                background: designImage ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.60 0.18 240 / 0.12)",
+                border: `1px solid ${designImage ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.60 0.18 240 / 0.35)"}`,
+                color: designImage ? S.purple : S.blue,
+              }}>
+              {generatingDesign
+                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</>
+                : designImage
+                  ? <><RefreshCw className="w-3 h-3 mr-1" />重新生成</>
+                  : <><Wand2 className="w-3 h-3 mr-1" />生成主图 (20积分)</>
               }
-            </div>
-          </div>
-
-          {/* 三视图区域 */}
-          <div className="grid grid-cols-3 gap-2">
-            {([
-              { key: "frontImageUrl", viewType: "front" as const, label: "正面" },
-              { key: "sideImageUrl", viewType: "side" as const, label: "侧面" },
-              { key: "backImageUrl", viewType: "back" as const, label: "背面" },
-            ] as const).map(({ key, viewType, label }) => (
-              <ViewImage
-                key={viewType}
-                url={char[key]}
-                label={label}
-                onGenerate={() => handleGenerateView(viewType)}
-                generating={!!generatingViews[viewType]}
-                disabled={!char.uploadedImageUrl}
-              />
-            ))}
+            </Button>
           </div>
         </div>
 
-        {/* 下载已生成的图片 */}
-        {hasImages && (
-          <div className="flex flex-wrap gap-2 pt-1">
-            {char.mainImageUrl && (
-              <a href={char.mainImageUrl} target="_blank" rel="noreferrer"
+        {/* 主图展示 */}
+        {designImage ? (
+          <div className="space-y-3">
+            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid oklch(0.25 0.008 240)" }}>
+              <img src={designImage} alt="角色设计主图" className="w-full object-contain" style={{ maxHeight: 320 }} />
+            </div>
+            <div className="flex items-center gap-2">
+              <a href={designImage} download target="_blank" rel="noreferrer"
                 className="flex items-center gap-1 px-2 py-1 rounded text-[10px]"
                 style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.sub, fontFamily: S.mono }}>
-                <Download className="w-2.5 h-2.5" />主视图
+                <Download className="w-2.5 h-2.5" />下载主图
               </a>
-            )}
-            {char.frontImageUrl && (
-              <a href={char.frontImageUrl} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px]"
-                style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.sub, fontFamily: S.mono }}>
-                <Download className="w-2.5 h-2.5" />正面
-              </a>
-            )}
-            {char.sideImageUrl && (
-              <a href={char.sideImageUrl} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px]"
-                style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.sub, fontFamily: S.mono }}>
-                <Download className="w-2.5 h-2.5" />侧面
-              </a>
-            )}
-            {char.backImageUrl && (
-              <a href={char.backImageUrl} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px]"
-                style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.sub, fontFamily: S.mono }}>
-                <Download className="w-2.5 h-2.5" />背面
-              </a>
-            )}
+              <span className="text-[10px]" style={{ color: S.dim }}>
+                布局：左1/3 近景 | 右2/3 正面·侧面·背面三视图
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 rounded text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)" }}>
+            <ImageIcon className="w-8 h-8 mx-auto mb-2" style={{ color: "oklch(0.30 0.006 240)" }} />
+            <p className="text-xs" style={{ color: S.dim }}>
+              {char.uploadedImageUrl
+                ? "点击「生成主图」，Nano Banana Pro 将生成含近景+三视图的16:9角色设计图"
+                : "请先上传 MJ 参考图"}
+            </p>
           </div>
         )}
       </div>
+
+      {/* STEP 4: 一键切分 4 张图 */}
+      {designImage && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.65 0.2 145 / 0.15)", border: "1px solid oklch(0.65 0.2 145 / 0.3)", color: S.green, fontFamily: S.mono }}>STEP 4</span>
+              <span className="text-xs font-semibold" style={{ color: S.green, fontFamily: S.grotesk }}>一键切分 4 张视图</span>
+            </div>
+            <Button size="sm"
+              onClick={handleSplit}
+              disabled={splitting}
+              style={{
+                background: hasSplitImages ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.65 0.2 145 / 0.12)",
+                border: `1px solid ${hasSplitImages ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.65 0.2 145 / 0.35)"}`,
+                color: hasSplitImages ? S.purple : S.green,
+              }}>
+              {splitting
+                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />切分中</>
+                : hasSplitImages
+                  ? <><RefreshCw className="w-3 h-3 mr-1" />重新切分</>
+                  : <><Scissors className="w-3 h-3 mr-1" />切分 4 张 (2积分)</>
+              }
+            </Button>
+          </div>
+
+          {/* 切分后的 4 张图 */}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { key: "closeupImageUrl" as const, label: "近景" },
+              { key: "frontImageUrl" as const, label: "正视图" },
+              { key: "sideImageUrl" as const, label: "侧视图" },
+              { key: "backImageUrl" as const, label: "后视图" },
+            ].map(({ key, label }) => {
+              const url = char[key];
+              return (
+                <div key={key} className="space-y-1">
+                  <div className="rounded overflow-hidden"
+                    style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", aspectRatio: "3/4" }}>
+                    {url
+                      ? <img src={url} alt={label} className="w-full h-full object-cover" />
+                      : <div className="w-full h-full flex items-center justify-center">
+                        <ImageIcon className="w-4 h-4" style={{ color: "oklch(0.30 0.006 240)" }} />
+                      </div>
+                    }
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px]" style={{ color: S.dim }}>{label}</span>
+                    {url && (
+                      <a href={url} download target="_blank" rel="noreferrer"
+                        className="hover:opacity-80" style={{ color: "oklch(0.45 0.01 240)" }}>
+                        <Download className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -545,8 +527,8 @@ export default function Phase2() {
         <div className="flex-shrink-0 w-12 h-12 rounded flex items-center justify-center text-lg font-bold"
           style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.4)", color: S.amber, fontFamily: S.mono }}>02</div>
         <div>
-          <h2 className="text-xl font-bold mb-1" style={{ color: S.text, fontFamily: S.grotesk }}>人物与机甲资产</h2>
-          <p className="text-sm" style={{ color: S.sub }}>MJ7 提示词 → 上传参考图 → Nano Banana Pro 生成三视图 → 导入资产库</p>
+          <h2 className="text-xl font-bold mb-1" style={{ color: S.text, fontFamily: S.grotesk }}>人物资产</h2>
+          <p className="text-sm" style={{ color: S.sub }}>MJ7 提示词 → 上传参考图 → Nano Banana Pro 生成16:9角色设计主图 → 一键切分近景/正视/侧视/后视图</p>
         </div>
       </div>
 
@@ -560,12 +542,17 @@ export default function Phase2() {
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.55 0.18 290 / 0.15)", color: S.purple, fontFamily: S.mono }}>STEP 2</span>
-            上传 MJ 生成的图片 + 填写 Nano 辅助提示词
+            上传 MJ 参考图 + 填写 Nano 辅助提示词
           </div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.60 0.18 240 / 0.15)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
-            Nano Banana Pro 生成主视图 + 三视图
+            Nano 生成16:9角色设计主图（近景+三视图）
+          </div>
+          <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
+          <div className="flex items-center gap-1.5">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.65 0.2 145 / 0.15)", color: S.green, fontFamily: S.mono }}>STEP 4</span>
+            一键切分 4 张视图
           </div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5">

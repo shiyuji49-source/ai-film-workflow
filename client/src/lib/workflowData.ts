@@ -79,13 +79,13 @@ export const STYLE_SUBTYPES: StyleSubtype[] = [
   // ── 3D 小类 ──
   {
     id: "guoman_3d", label: "国漫", parentId: "3D",
-    zh: "3D国漫风格，高精度CG渲染，流畅动作，东方美学构图，精细场景建模，电影级灯光，4K超清",
-    en: "3D Chinese animation style, high-quality CG rendering, fluid motion, Eastern aesthetic composition, detailed scene modeling, cinematic lighting, 4K ultra HD",
+    zh: "3D国漫风格，三维动画渲染，流畅动作，东方美学构图，精细场景建模，电影级灯光，4K超清",
+    en: "3D Chinese animation style, stylized 3D animation rendering, fluid motion, Eastern aesthetic composition, detailed scene modeling, cinematic lighting, 4K ultra HD",
   },
   {
     id: "jia_guoman_3d", label: "科幻机甲", parentId: "3D",
-    zh: "3D科幻机甲国漫风格，高精度CG渲染，硬表面机甲建模，金属装甲质感，能量粒子特效，体积光与丁达尔光效，电影级宽画幅构图，4K超清",
-    en: "3D sci-fi mecha Chinese animation style, high-quality CG rendering, hard-surface mecha modeling, metallic armor textures, energy particle effects, volumetric and Tyndall lighting, cinematic widescreen composition, 4K ultra HD",
+    zh: "3D科幻机甲国漫风格，三维动画渲染，硬表面机甲建模，金属装甲质感，能量粒子特效，体积光与丁达尔光效，电影级宽画幅构图，4K超清",
+    en: "3D sci-fi mecha Chinese animation style, stylized 3D animation rendering, hard-surface mecha modeling, metallic armor textures, energy particle effects, volumetric and Tyndall lighting, cinematic widescreen composition, 4K ultra HD",
   },
   {
     id: "saibopengke_3d", label: "赛博朋克", parentId: "3D",
@@ -254,8 +254,9 @@ export const SHOT_TYPES: ShotType[] = [
 
 export const WORKFLOW_STEPS = [
   { id: "phase1", number: "01", title: "项目定义", subtitle: "剧本上传与解析", icon: "FileText" },
-  { id: "phase2", number: "02", title: "人物资产", subtitle: "角色与机甲提示词", icon: "Users" },
-  { id: "phase2b", number: "02B", title: "场景道具", subtitle: "分集场景道具提示词", icon: "MapPin" },
+  { id: "phase2", number: "02", title: "人物资产", subtitle: "角色设计主图与三视图", icon: "Users" },
+  { id: "phase2b", number: "02B", title: "场景资产", subtitle: "场景多视角图生成", icon: "MapPin" },
+  { id: "phase2c", number: "02C", title: "道具资产", subtitle: "道具三视图生成", icon: "Package" },
   { id: "phase3", number: "03", title: "分镜设计", subtitle: "AI 自动分镜生成", icon: "Film" },
   { id: "phase4", number: "04", title: "提示词撰写", subtitle: "Seedance 中文提示词", icon: "Wand2" },
   { id: "phase5", number: "05", title: "生成与后期", subtitle: "工具链操作指南", icon: "Play" },

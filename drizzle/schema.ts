@@ -123,7 +123,7 @@ export const assets = mysqlTable("assets", {
   /** 关联项目（可选） */
   projectId: int("projectId"),
   /** 资产类型 */
-  type: mysqlEnum("type", ["character", "scene"]).notNull(),
+  type: mysqlEnum("type", ["character", "scene", "prop"]).notNull(),
   /** 资产名称 */
   name: varchar("name", { length: 128 }).notNull(),
   /** 资产描述（中文） */
@@ -165,7 +165,7 @@ export const assetHistory = mysqlTable("asset_history", {
 export type AssetHistory = typeof assetHistory.$inferSelect;
 export type InsertAssetHistory = typeof assetHistory.$inferInsert;
 
-// ─── 团队成员表（预留）──────────────────────────────────
+// Team Members Table (reserved)
 export const teamMembers = mysqlTable("teamMembers", {
   id: int("id").autoincrement().primaryKey(),
   teamId: int("teamId").notNull(),
