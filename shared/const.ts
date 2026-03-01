@@ -2,7 +2,9 @@ export const COOKIE_NAME = "app_session_id";
 
 // ── Gemini 模型配置 ──────────────────────────────────────────────────────────
 // 旗舰模型：用于 MJ 提示词生成、分镇生成、视频提示词生成等高质量创意任务
-export const GEMINI_PRO_MODEL = "gemini-3.1-pro-preview";
+// 注意：gemini-3.1-pro-preview 目前超时不可用，临时改用 flash 模型
+// TODO: 待 3.1 Pro 稳定后改回 "gemini-3.1-pro-preview"
+export const GEMINI_PRO_MODEL = "gemini-3-flash-preview";
 
 // Flash 模型：用于剧本解析、通用 LLM 接口等速度优先任务
 export const GEMINI_FLASH_MODEL = "gemini-3-flash-preview";
