@@ -236,6 +236,32 @@ function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
               <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>MJ 参考图（用 MJ7 生成后上传，NBP 提示词已预设）</p>
               <ImageUploadZone imageUrl={asset.uploadedImageUrl} onUpload={handleUpload} uploading={uploading} />
             </div>
+            {/* Nano 辅助提示词（可选，追加到自动生成的基础提示词后面） */}
+            <div className="space-y-1 mt-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px]" style={{ color: S.dim }}>
+                  Nano 辅助提示词（可选）——追加到自动提示词末尾
+                </p>
+                <button
+                  className="text-[10px] px-1.5 py-0.5 rounded transition-opacity hover:opacity-80"
+                  style={{ color: S.dim, background: "oklch(0.15 0.005 240)", border: "1px solid oklch(0.22 0.006 240)" }}
+                  onClick={() => {
+                    const preview = getTriviewPrompt(asset.name || "", asset.nanoPrompt || undefined);
+                    toast.info(`NBP 提示词预览：${preview}`, { duration: 8000 });
+                  }}
+                >
+                  预览完整提示词
+                </button>
+              </div>
+              <Textarea
+                value={asset.nanoPrompt || ""}
+                onChange={e => updateEpisodeAsset(asset.id, { nanoPrompt: e.target.value })}
+                placeholder="可选：输入额外要求，如 golden metallic surface, glowing runes，将自动追加到 NBP 提示词末尾"
+                rows={2}
+                className="text-xs resize-none"
+                style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", color: S.sub, fontFamily: S.mono }}
+              />
+            </div>
           </div>
 
           {/* STEP 3: 生成三视图（一张图包含正/侧/背） */}

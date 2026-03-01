@@ -8,6 +8,7 @@ import {
   GEMINI_FLASH_MODEL,
   GEMINI_THINKING_HIGH,
   GEMINI_THINKING_LOW,
+  GEMINI_THINKING_OFF,
 } from "../../shared/const";
 
 // Gemini API helper --------------------------------------------------------
@@ -28,7 +29,8 @@ async function callGemini(
       temperature: 0.7,
       maxOutputTokens,
       // Gemini 3 系列特有参数：控制内部思考深度
-      thinkingConfig: { thinkingBudget: thinkingLevel === GEMINI_THINKING_LOW ? 512 : -1 },
+      // off=0(关闭，适合感性创作), low=512(最低，适合结构化), high=-1(最大，适合逻辑推理)
+      thinkingConfig: { thinkingBudget: thinkingLevel === GEMINI_THINKING_OFF ? 0 : thinkingLevel === GEMINI_THINKING_LOW ? 512 : -1 },
     },
   };
 
@@ -65,9 +67,13 @@ async function callGemini(
 const callGeminiFlash = (prompt: string, maxOutputTokens = 65536) =>
   callGemini(prompt, maxOutputTokens, GEMINI_FLASH_MODEL, GEMINI_THINKING_LOW);
 
-// MJ 提示词生成用：Pro 模型 + thinking high（最高质量创意性内容生成）
+// MJ 提示词生成用：Pro 模型 + thinking high（适合逻辑推理类任务：分镜、视频提示词）
 const callGeminiPro = (prompt: string, maxOutputTokens = 8192) =>
   callGemini(prompt, maxOutputTokens, GEMINI_PRO_MODEL, GEMINI_THINKING_HIGH);
+
+// MJ 资产提示词用：Pro 模型 + thinking off（感性创作，关闭推理让输出更自由、视觉化）
+const callGeminiProCreative = (prompt: string, maxOutputTokens = 8192) =>
+  callGemini(prompt, maxOutputTokens, GEMINI_PRO_MODEL, GEMINI_THINKING_OFF);
 
 // Router -------------------------------------------------------------------
 
@@ -243,7 +249,7 @@ ${renderingNote}
   "en": "English prompt content --ar 2:3 --style raw --q 2"
 }`;
 
-      const raw = await callGeminiPro(prompt);
+      const raw = await callGeminiProCreative(prompt);
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as { zh: string; en: string };
       return parsed;
@@ -318,7 +324,7 @@ ${renderingNote}
   "en": "English prompt content --ar 1:1 --style raw --q 2"
 }`;
 
-      const raw = await callGeminiPro(prompt);
+      const raw = await callGeminiProCreative(prompt);
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as { zh: string; en: string };
       return parsed;

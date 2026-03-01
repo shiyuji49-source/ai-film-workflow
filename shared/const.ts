@@ -8,8 +8,9 @@ export const GEMINI_PRO_MODEL = "gemini-3.1-pro-preview";
 export const GEMINI_FLASH_MODEL = "gemini-3-flash-preview";
 
 // thinking_level 配置：Gemini 3 系列特有参数
-export const GEMINI_THINKING_HIGH = "high";   // 默认，适合创意性内容生成
-export const GEMINI_THINKING_LOW  = "low";    // 适合结构化输出，降低延迟
+export const GEMINI_THINKING_HIGH = "high";   // 适合逻辑推理：分镜生成、视频提示词
+export const GEMINI_THINKING_LOW  = "low";    // 适合结构化输出：剧本解析
+export const GEMINI_THINKING_OFF  = "off";    // 关闭 thinking：MJ 提示词生成（感性创作，不需要推理）
 
 // 各操作的预估时间（秒）
 export const GEMINI_ESTIMATE_SECS = {
