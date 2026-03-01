@@ -23,14 +23,21 @@ async function callGemini(
   if (!apiKey) throw new Error("GEMINI_API_KEY 未配置");
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // Gemini 3 系列 thinkingBudget 规则：
+  // - OFF：不传 thinkingConfig，让模型自动决定（感性创作最佳）
+  // - LOW：1024（最小有效值，适合结构化输出）
+  // - HIGH：-1（最大思考深度，适合复杂逻辑推理）
+  // 注意：Gemini 3.1 Pro 不支持 thinkingBudget: 0，会返回 400 错误
+  const thinkingConfig = thinkingLevel === GEMINI_THINKING_OFF
+    ? undefined  // 不传此字段，让模型自动决定
+    : { thinkingBudget: thinkingLevel === GEMINI_THINKING_LOW ? 1024 : -1 };
+
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.7,
       maxOutputTokens,
-      // Gemini 3 系列特有参数：控制内部思考深度
-      // off=0(关闭，适合感性创作), low=512(最低，适合结构化), high=-1(最大，适合逻辑推理)
-      thinkingConfig: { thinkingBudget: thinkingLevel === GEMINI_THINKING_OFF ? 0 : thinkingLevel === GEMINI_THINKING_LOW ? 512 : -1 },
+      ...(thinkingConfig ? { thinkingConfig } : {}),
     },
   };
 
