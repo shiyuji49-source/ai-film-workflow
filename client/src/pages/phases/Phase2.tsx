@@ -1,13 +1,12 @@
 // Phase2: 人物资产
-// 工作流：① AI 生成 MJ7 提示词 → ② 上传 MJ 参考图 + Nano 提示词 → ③ 生成16:9角色设计主图 → ④ 一键切分4张（近景/正视/侧视/后视）→ ⑤ 导入资产库
+// 工作流：① AI 生成 MJ7 提示词 → ② 上传 MJ 参考图 → ③ 分别生成4张9:16视角图（近景/正视/侧视/背视）→ ④ 拼合成16:9设计主图 → ⑤ 导入资产库
 import { useProject } from "@/contexts/ProjectContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import {
   ChevronRight, Wand2, Copy, Check, Loader2, Upload, ImageIcon,
-  Download, Library, RefreshCw, Scissors, CheckCircle2, Bot, User
+  Download, Library, RefreshCw, CheckCircle2, Bot, User, Merge
 } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
@@ -114,6 +113,72 @@ function ImageUploadZone({
   );
 }
 
+// ─── ViewPanel: 单个视角图面板 ─────────────────────────────────────────────────
+function ViewPanel({
+  viewType, label, color, imageUrl, loading, disabled, onGenerate
+}: {
+  viewType: "closeup" | "front" | "side" | "back";
+  label: string;
+  color: string;
+  imageUrl?: string | null;
+  loading: boolean;
+  disabled: boolean;
+  onGenerate: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {/* 视角标签 + 生成按钮 */}
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+          style={{ background: `${color} / 0.15`, border: `1px solid ${color} / 0.35`, color, fontFamily: S.mono }}>
+          {label}
+        </span>
+        <button
+          onClick={onGenerate}
+          disabled={loading || disabled}
+          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all disabled:opacity-40"
+          style={{
+            background: imageUrl ? "oklch(0.55 0.18 290 / 0.12)" : `${color.replace("oklch(", "oklch(")} / 0.12`,
+            border: `1px solid ${imageUrl ? "oklch(0.55 0.18 290 / 0.4)" : `${color} / 0.35`}`,
+            color: imageUrl ? S.purple : color,
+            fontFamily: S.mono,
+          }}
+        >
+          {loading
+            ? <><Loader2 className="w-2.5 h-2.5 animate-spin" />生成中</>
+            : imageUrl
+              ? <><RefreshCw className="w-2.5 h-2.5" />重新生成</>
+              : <><Wand2 className="w-2.5 h-2.5" />生成</>
+          }
+        </button>
+      </div>
+
+      {/* 图片预览区（9:16 比例） */}
+      <div className="rounded overflow-hidden"
+        style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", aspectRatio: "9/16" }}>
+        {imageUrl
+          ? <img src={imageUrl} alt={label} className="w-full h-full object-cover" />
+          : <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
+            <ImageIcon className="w-5 h-5" style={{ color: "oklch(0.30 0.006 240)" }} />
+            <span className="text-[9px]" style={{ color: "oklch(0.35 0.006 240)", fontFamily: S.mono }}>
+              {disabled ? "先上传参考图" : "待生成"}
+            </span>
+          </div>
+        }
+      </div>
+
+      {/* 下载按钮 */}
+      {imageUrl && (
+        <a href={imageUrl} download target="_blank" rel="noreferrer"
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] w-fit"
+          style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.dim, fontFamily: S.mono }}>
+          <Download className="w-2.5 h-2.5" />下载
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ─── CharacterCard ────────────────────────────────────────────────────────────
 function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characters"][0] }) {
   const { projectInfo, updateCharacter } = useProject();
@@ -122,17 +187,16 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
 
   const [uploading, setUploading] = useState(false);
   const [generatingMJ, setGeneratingMJ] = useState(false);
-  const [generatingDesign, setGeneratingDesign] = useState(false);
-  const [splitting, setSplitting] = useState(false);
+  const [generatingView, setGeneratingView] = useState<Record<string, boolean>>({});
+  const [merging, setMerging] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const generateMJMutation = trpc.ai.generateCharacterPrompt.useMutation();
-  // Q 版开关状态（从 char 属性读取）
   const isQVersion = char.isQVersion ?? false;
   const createAssetMutation = trpc.assets.create.useMutation();
   const uploadMutation = trpc.assets.uploadImage.useMutation();
-  const generateDesignMutation = trpc.assets.generateCharacterDesign.useMutation();
-  const splitDesignMutation = trpc.assets.splitCharacterDesign.useMutation();
+  const generateViewMutation = trpc.assets.generateCharacterView.useMutation();
+  const mergeDesignMutation = trpc.assets.mergeCharacterDesign.useMutation();
 
   // 获取或创建资产库 ID
   const getOrCreateAssetId = async (): Promise<number> => {
@@ -177,7 +241,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
     }
   };
 
-  // 上传 MJ 参考图（上传成功后自动触发生成主图）
+  // 上传 MJ 参考图
   const handleUpload = async (base64: string, mimeType: string) => {
     if (!isAuthenticated) { toast.error("请先登录后再上传图片"); return; }
     setUploading(true);
@@ -186,7 +250,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
       const result = await uploadMutation.mutateAsync({ id: assetId, imageBase64: base64, mimeType });
       updateCharacter(char.id, { uploadedImageUrl: result.uploadedImageUrl });
       utils.assets.list.invalidate();
-      toast.success("参考图已上传，请点击「生成角色设计主图」按鈕开始生成");
+      toast.success("参考图已上传！请分别生成4张视角图");
     } catch (err) {
       toast.error(`上传失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
@@ -194,50 +258,52 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
     }
   };
 
-  // 生成 16:9 角色设计主图
-  const handleGenerateDesign = async (uploadedUrl?: string) => {
-    const imageUrl = uploadedUrl || char.uploadedImageUrl;
-    if (!imageUrl) { toast.error("请先上传 MJ 参考图"); return; }
+  // 生成单张视角图（9:16）
+  const handleGenerateView = async (viewType: "closeup" | "front" | "side" | "back") => {
+    if (!char.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
     if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
-    setGeneratingDesign(true);
+    setGeneratingView(prev => ({ ...prev, [viewType]: true }));
     try {
       const assetId = await getOrCreateAssetId();
-      const result = await generateDesignMutation.mutateAsync({
+      const result = await generateViewMutation.mutateAsync({
         id: assetId,
+        viewType,
         nanoPrompt: char.nanoPrompt || undefined,
       });
-      updateCharacter(char.id, { designImageUrl: result.imageUrl, mainImageUrl: result.imageUrl });
+      // 更新对应视角图 URL
+      const fieldMap: Record<string, keyof typeof char> = {
+        closeup: "closeupImageUrl",
+        front: "frontImageUrl",
+        side: "sideImageUrl",
+        back: "backImageUrl",
+      };
+      updateCharacter(char.id, { [fieldMap[viewType]]: result.imageUrl });
       utils.assets.list.invalidate();
-      toast.success("角色设计主图生成完成！");
+      const labelMap: Record<string, string> = { closeup: "近景肖像", front: "正视全身", side: "侧视全身", back: "背视全身" };
+      toast.success(`${labelMap[viewType]}生成完成！`);
     } catch (err) {
       toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
-      setGeneratingDesign(false);
+      setGeneratingView(prev => ({ ...prev, [viewType]: false }));
     }
   };
 
-  // 一键切分 4 张图
-  const handleSplit = async () => {
-    const designImg = char.designImageUrl || char.mainImageUrl;
-    if (!designImg) { toast.error("请先生成角色设计主图"); return; }
-    if (!isAuthenticated) { toast.error("请先登录后再切分图片"); return; }
-    setSplitting(true);
+  // 拼合4张视角图为16:9合图
+  const handleMerge = async () => {
+    const allViews = char.closeupImageUrl && char.frontImageUrl && char.sideImageUrl && char.backImageUrl;
+    if (!allViews) { toast.error("请先生成全部4张视角图（近景/正视/侧视/背视）"); return; }
+    if (!isAuthenticated) { toast.error("请先登录后再拼合图片"); return; }
+    setMerging(true);
     try {
       const assetId = await getOrCreateAssetId();
-      const result = await splitDesignMutation.mutateAsync({ id: assetId });
-      const urls = result.splitUrls as Record<string, string>;
-      updateCharacter(char.id, {
-        closeupImageUrl: urls.closeup,
-        frontImageUrl: urls.front,
-        sideImageUrl: urls.side,
-        backImageUrl: urls.back,
-      });
+      const result = await mergeDesignMutation.mutateAsync({ id: assetId });
+      updateCharacter(char.id, { designImageUrl: result.imageUrl, mainImageUrl: result.imageUrl });
       utils.assets.list.invalidate();
-      toast.success("已成功切分为 4 张视图");
+      toast.success("16:9 角色设计主图拼合完成！");
     } catch (err) {
-      toast.error(`切分失败：${err instanceof Error ? err.message : "未知错误"}`);
+      toast.error(`拼合失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
-      setSplitting(false);
+      setMerging(false);
     }
   };
 
@@ -257,7 +323,15 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
   };
 
   const designImage = char.designImageUrl || char.mainImageUrl;
-  const hasSplitImages = char.closeupImageUrl || char.frontImageUrl || char.sideImageUrl || char.backImageUrl;
+  const allViewsDone = !!(char.closeupImageUrl && char.frontImageUrl && char.sideImageUrl && char.backImageUrl);
+  const anyViewDone = !!(char.closeupImageUrl || char.frontImageUrl || char.sideImageUrl || char.backImageUrl);
+
+  const viewConfigs: { viewType: "closeup" | "front" | "side" | "back"; label: string; color: string; urlKey: keyof typeof char }[] = [
+    { viewType: "closeup", label: "近景肖像", color: S.amber,  urlKey: "closeupImageUrl" },
+    { viewType: "front",   label: "正视全身", color: S.blue,   urlKey: "frontImageUrl"   },
+    { viewType: "side",    label: "侧视全身", color: S.purple, urlKey: "sideImageUrl"    },
+    { viewType: "back",    label: "背视全身", color: S.green,  urlKey: "backImageUrl"    },
+  ];
 
   return (
     <div className="p-4 space-y-5" style={S.card}>
@@ -358,7 +432,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
               </div>
               {char.promptEn}
             </div>
-            {/* Q 版形象提示词（开启 Q 版开关后展示） */}
+            {/* Q 版形象提示词 */}
             {isQVersion && (char.qVersionPromptZh || char.qVersionPromptEn) && (
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center gap-1.5">
@@ -405,7 +479,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
           <span className="text-xs font-semibold" style={{ color: S.purple, fontFamily: S.grotesk }}>上传 MJ 参考图</span>
         </div>
         <div>
-          <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>MJ 参考图（用 MJ7 生成后上传，NBP 提示词已预设）</p>
+          <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>将 MJ7 生成的参考图上传（支持 JPG/PNG/WEBP，最大 16MB）</p>
           <ImageUploadZone
             imageUrl={char.uploadedImageUrl}
             onUpload={handleUpload}
@@ -414,46 +488,92 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
         </div>
       </div>
 
-      {/* STEP 3: 生成 16:9 角色设计主图 */}
+      {/* STEP 3: 分别生成4张9:16视角图 */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.60 0.18 240 / 0.15)", border: "1px solid oklch(0.60 0.18 240 / 0.3)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
+          <span className="text-xs font-semibold" style={{ color: S.blue, fontFamily: S.grotesk }}>分别生成4张视角图（9:16 竖版）</span>
+          {anyViewDone && (
+            <span className="text-[10px]" style={{ color: S.dim, fontFamily: S.mono }}>
+              {[char.closeupImageUrl, char.frontImageUrl, char.sideImageUrl, char.backImageUrl].filter(Boolean).length}/4 已完成
+            </span>
+          )}
+        </div>
+
+        {!char.uploadedImageUrl && (
+          <div className="p-3 rounded text-xs text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)", color: S.dim }}>
+            请先完成 STEP 2 上传 MJ 参考图
+          </div>
+        )}
+
+        {/* 4张视角图并排展示 */}
+        <div className="grid grid-cols-4 gap-3">
+          {viewConfigs.map(({ viewType, label, color, urlKey }) => (
+            <ViewPanel
+              key={viewType}
+              viewType={viewType}
+              label={label}
+              color={color}
+              imageUrl={char[urlKey] as string | null | undefined}
+              loading={!!generatingView[viewType]}
+              disabled={!char.uploadedImageUrl}
+              onGenerate={() => handleGenerateView(viewType)}
+            />
+          ))}
+        </div>
+
+        {char.uploadedImageUrl && (
+          <p className="text-[10px]" style={{ color: S.dim }}>
+            每张图单独生成，可以重新生成不满意的视角。每张消耗 5 积分。
+          </p>
+        )}
+      </div>
+
+      {/* STEP 4: 拼合成16:9设计主图 */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.60 0.18 240 / 0.15)", border: "1px solid oklch(0.60 0.18 240 / 0.3)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
-            <span className="text-xs font-semibold" style={{ color: S.blue, fontFamily: S.grotesk }}>生成角色设计主图（16:9）</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.65 0.2 145 / 0.15)", border: "1px solid oklch(0.65 0.2 145 / 0.3)", color: S.green, fontFamily: S.mono }}>STEP 4</span>
+            <span className="text-xs font-semibold" style={{ color: S.green, fontFamily: S.grotesk }}>拼合成16:9角色设计主图</span>
           </div>
-          <div className="flex gap-2">
-            <Button size="sm"
-              onClick={() => handleGenerateDesign()}
-              disabled={generatingDesign || !char.uploadedImageUrl}
-              style={{
-                background: designImage ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.60 0.18 240 / 0.12)",
-                border: `1px solid ${designImage ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.60 0.18 240 / 0.35)"}`,
-                color: designImage ? S.purple : S.blue,
-              }}>
-              {generatingDesign
-                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</>
-                : designImage
-                  ? <><RefreshCw className="w-3 h-3 mr-1" />重新生成</>
-                  : <><Wand2 className="w-3 h-3 mr-1" />生成主图 (20积分)</>
-              }
-            </Button>
-          </div>
+          <Button size="sm"
+            onClick={handleMerge}
+            disabled={merging || !allViewsDone}
+            style={{
+              background: designImage ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.65 0.2 145 / 0.12)",
+              border: `1px solid ${designImage ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.65 0.2 145 / 0.35)"}`,
+              color: designImage ? S.purple : S.green,
+              opacity: allViewsDone ? 1 : 0.5,
+            }}>
+            {merging
+              ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />拼合中</>
+              : designImage
+                ? <><RefreshCw className="w-3 h-3 mr-1" />重新拼合</>
+                : <><Merge className="w-3 h-3 mr-1" />拼合4图为16:9</>
+            }
+          </Button>
         </div>
 
-        {/* 主图展示 */}
+        {!allViewsDone && (
+          <p className="text-[10px]" style={{ color: S.dim }}>
+            需先完成全部4张视角图的生成，才能拼合
+          </p>
+        )}
+
+        {/* 合图展示 */}
         {designImage ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="rounded-lg overflow-hidden" style={{ border: "1px solid oklch(0.25 0.008 240)", background: "oklch(0.08 0.003 240)" }}>
-              <img src={designImage} alt="角色设计主图" className="w-full h-auto block" style={{ maxHeight: "600px", objectFit: "contain" }} />
+              <img src={designImage} alt="角色设计主图（16:9）" className="w-full h-auto block" />
             </div>
             <div className="flex items-center gap-2">
               <a href={designImage} download target="_blank" rel="noreferrer"
                 className="flex items-center gap-1 px-2 py-1 rounded text-[10px]"
                 style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.sub, fontFamily: S.mono }}>
-                <Download className="w-2.5 h-2.5" />下载主图
+                <Download className="w-2.5 h-2.5" />下载16:9合图
               </a>
               <span className="text-[10px]" style={{ color: S.dim }}>
-                布局：左1/4 近景头像 | 右3/4 正面·侧面·背面三视图
+                布局：近景肖像 | 正视全身 | 侧视全身 | 背视全身（程序拼合，比例精确）
               </span>
             </div>
           </div>
@@ -461,74 +581,13 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
           <div className="p-6 rounded text-center" style={{ background: "oklch(0.10 0.004 240)", border: "1px dashed oklch(0.28 0.008 240)" }}>
             <ImageIcon className="w-8 h-8 mx-auto mb-2" style={{ color: "oklch(0.30 0.006 240)" }} />
             <p className="text-xs" style={{ color: S.dim }}>
-              {char.uploadedImageUrl
-                ? "点击「生成主图」，Nano Banana Pro 将生成横版角色设计图（左1/4近景头像 + 右3/4正面·侧面·背面三视图）"
-                : "请先上传 MJ 参考图"}
+              {allViewsDone
+                ? "4张视角图已就绪，点击「拼合4图为16:9」生成角色设计主图"
+                : "完成4张视角图后，系统将自动拼合为16:9横版角色设计主图"}
             </p>
           </div>
         )}
       </div>
-
-      {/* STEP 4: 一键切分 4 张图 */}
-      {designImage && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.65 0.2 145 / 0.15)", border: "1px solid oklch(0.65 0.2 145 / 0.3)", color: S.green, fontFamily: S.mono }}>STEP 4</span>
-              <span className="text-xs font-semibold" style={{ color: S.green, fontFamily: S.grotesk }}>一键切分 4 张视图</span>
-            </div>
-            <Button size="sm"
-              onClick={handleSplit}
-              disabled={splitting}
-              style={{
-                background: hasSplitImages ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.65 0.2 145 / 0.12)",
-                border: `1px solid ${hasSplitImages ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.65 0.2 145 / 0.35)"}`,
-                color: hasSplitImages ? S.purple : S.green,
-              }}>
-              {splitting
-                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />切分中</>
-                : hasSplitImages
-                  ? <><RefreshCw className="w-3 h-3 mr-1" />重新切分</>
-                  : <><Scissors className="w-3 h-3 mr-1" />切分 4 张 (2积分)</>
-              }
-            </Button>
-          </div>
-
-          {/* 切分后的 4 张图 */}
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { key: "closeupImageUrl" as const, label: "近景" },
-              { key: "frontImageUrl" as const, label: "正视图" },
-              { key: "sideImageUrl" as const, label: "侧视图" },
-              { key: "backImageUrl" as const, label: "后视图" },
-            ].map(({ key, label }) => {
-              const url = char[key];
-              return (
-                <div key={key} className="space-y-1">
-                  <div className="rounded overflow-hidden"
-                    style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", aspectRatio: "2/3" }}>
-                    {url
-                      ? <img src={url} alt={label} className="w-full h-full object-cover" />
-                      : <div className="w-full h-full flex items-center justify-center">
-                        <ImageIcon className="w-4 h-4" style={{ color: "oklch(0.30 0.006 240)" }} />
-                      </div>
-                    }
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px]" style={{ color: S.dim }}>{label}</span>
-                    {url && (
-                      <a href={url} download target="_blank" rel="noreferrer"
-                        className="hover:opacity-80" style={{ color: "oklch(0.45 0.01 240)" }}>
-                        <Download className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -576,7 +635,7 @@ export default function Phase2() {
           style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.4)", color: S.amber, fontFamily: S.mono }}>02</div>
         <div>
           <h2 className="text-xl font-bold mb-1" style={{ color: S.text, fontFamily: S.grotesk }}>人物资产</h2>
-          <p className="text-sm" style={{ color: S.sub }}>MJ7 提示词 → 上传参考图 → Nano Banana Pro 生成16:9角色设计主图 → 一键切分近景/正视/侧视/后视图</p>
+          <p className="text-sm" style={{ color: S.sub }}>MJ7 提示词 → 上传参考图 → 分别生成4张9:16视角图 → 程序拼合为16:9设计主图</p>
         </div>
       </div>
 
@@ -585,27 +644,27 @@ export default function Phase2() {
         <div className="flex flex-wrap gap-4 text-xs" style={{ color: S.dim }}>
           <div className="flex items-center gap-1.5">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.75 0.17 65 / 0.15)", color: S.amber, fontFamily: S.mono }}>STEP 1</span>
-            AI 生成 MJ7 提示词 → 复制到 Midjourney 生成参考图
+            AI 生成 MJ7 提示词 → 复制到 Midjourney
           </div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.55 0.18 290 / 0.15)", color: S.purple, fontFamily: S.mono }}>STEP 2</span>
-            上传 MJ 参考图 + 填写 Nano 辅助提示词
+            上传 MJ 参考图
           </div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.60 0.18 240 / 0.15)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
-            Nano 生成16:9角色设计主图（近景+三视图）
+            分别生成4张9:16视角图（近景/正视/侧视/背视）
           </div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "oklch(0.65 0.2 145 / 0.15)", color: S.green, fontFamily: S.mono }}>STEP 4</span>
-            一键切分 4 张视图
+            程序拼合为16:9横版设计主图
           </div>
           <span style={{ color: "oklch(0.30 0.006 240)" }}>→</span>
           <div className="flex items-center gap-1.5">
             <Library className="w-3 h-3" style={{ color: S.green }} />
-            导入资产库统一管理
+            导入资产库
           </div>
         </div>
       </div>

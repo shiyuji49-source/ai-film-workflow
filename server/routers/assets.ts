@@ -138,11 +138,13 @@ export const assetsRouter = router({
       }
     }),
 
-  // ── 人物资产专用：生成 16:9 角色设计主图（含近景+三视图布局）──
-  generateCharacterDesign: protectedProcedure
+  // ── 人物资产专用：生成单张视角图（9:16）──
+  // viewType: closeup=近景肖像 | front=正视全身 | side=侧视全身 | back=背视全身
+  generateCharacterView: protectedProcedure
     .input(z.object({
       id: z.number(),
-      nanoPrompt: z.string().optional(), // Nano Banana Pro 辅助提示词
+      viewType: z.enum(["closeup", "front", "side", "back"]),
+      nanoPrompt: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const asset = await getAssetById(input.id, ctx.user.id);
@@ -150,21 +152,26 @@ export const assetsRouter = router({
       if (!asset.uploadedImageUrl) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "请先上传 MJ 参考图" });
       }
-      if (ctx.user.credits < CREDITS.generateCharDesign) {
-        throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成角色设计图需要 ${CREDITS.generateCharDesign} 积分` });
+      if (ctx.user.credits < CREDITS.generateMulti) {
+        throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成视角图需要 ${CREDITS.generateMulti} 积分` });
       }
 
-      await updateAsset(input.id, ctx.user.id, { status: "generating" });
+      const VIEW_PROMPTS: Record<string, string> = {
+        closeup: "close-up portrait, face and upper chest only, looking forward, highly detailed facial features, dramatic lighting, 9:16 vertical format, pure white or neutral background",
+        front:   "full body FRONT VIEW, character standing straight facing camera, A-pose or neutral stance, full height from head to toe visible, pure white background, character design sheet style, 9:16 vertical format",
+        side:    "full body SIDE VIEW (90 degree profile), character standing straight facing left, full height from head to toe visible, pure white background, character design sheet style, 9:16 vertical format",
+        back:    "full body BACK VIEW, character standing straight facing away from camera, full height from head to toe visible, pure white background, character design sheet style, 9:16 vertical format",
+      };
+      const VIEW_LABELS: Record<string, string> = {
+        closeup: "近景肖像", front: "正视全身", side: "侧视全身", back: "背视全身",
+      };
+
+      const baseViewPrompt = VIEW_PROMPTS[input.viewType];
+      const designPrompt = input.nanoPrompt?.trim()
+        ? `${baseViewPrompt}, ${input.nanoPrompt.trim()}, maintain exact same art style and character appearance as the reference image, high quality`
+        : `${baseViewPrompt}, maintain exact same art style and character appearance as the reference image, high quality`;
 
       try {
-        // 使用用户提供的 NBP 提示词，或使用默认的角色设计图提示词
-        const basePrompt = input.nanoPrompt?.trim() || "";
-        // 强制横版 16:9 布局：左1/3大头像，右2/3三视图（正/侧/背）左右排列
-        const layoutInstruction = `CHARACTER DESIGN SHEET. HORIZONTAL LANDSCAPE FORMAT, wider than tall, 16:9 aspect ratio. Divided into FOUR vertical columns side by side (left to right): [Column 1 - leftmost, 1/4 width] Large portrait/bust close-up of the character's face and upper body, filling the full height. [Column 2 - 1/4 width] Full-body FRONT VIEW, standing pose, full height. [Column 3 - 1/4 width] Full-body SIDE VIEW (profile), standing pose, full height. [Column 4 - rightmost, 1/4 width] Full-body BACK VIEW, standing pose, full height. All four panels are arranged horizontally in ONE ROW. Pure white background. No text labels. Clean anime character model sheet style. The image is LANDSCAPE (wide), NOT portrait (tall).`;
-        const designPrompt = basePrompt
-          ? `${layoutInstruction} Character description: ${basePrompt}. Maintain exact same art style and character appearance as the reference image.`
-          : `${layoutInstruction} Maintain exact same art style and character appearance as the reference image. High quality, clean linework.`;
-
         const genResult = await generateImage({
           prompt: designPrompt,
           originalImages: [{ url: asset.uploadedImageUrl, mimeType: "image/jpeg" }],
@@ -173,35 +180,114 @@ export const assetsRouter = router({
 
         const imgResp = await fetch(genResult.url);
         const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
-        const fileKey = `assets/${ctx.user.id}/${input.id}-chardesign-${nanoid(8)}.png`;
+        const fileKey = `assets/${ctx.user.id}/${input.id}-${input.viewType}-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, imgBuffer, "image/png");
 
-        await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateCharDesign, `生成角色设计主图: ${asset.name}`);
+        await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.generateMulti, `生成角色${VIEW_LABELS[input.viewType]}: ${asset.name}`);
+
+        await addAssetHistory({
+          assetId: input.id,
+          userId: ctx.user.id,
+          imageType: input.viewType,
+          imageUrl: s3Url,
+          prompt: designPrompt,
+        });
+
+        // 保存到 multiViewUrls
+        const existing = asset.multiViewUrls ? JSON.parse(asset.multiViewUrls) : {};
+        existing[input.viewType] = s3Url;
+        await updateAsset(input.id, ctx.user.id, {
+          multiViewUrls: JSON.stringify(existing),
+          status: "done",
+        });
+
+        return { success: true, imageUrl: s3Url, viewType: input.viewType };
+      } catch (err) {
+        await updateAsset(input.id, ctx.user.id, { status: "failed" });
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "视角图生成失败，请重试" });
+      }
+    }),
+
+  // ── 人物资产专用：将4张视角图拼合成 16:9 横版设计主图 ──
+  mergeCharacterDesign: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const asset = await getAssetById(input.id, ctx.user.id);
+      if (!asset) throw new TRPCError({ code: "NOT_FOUND", message: "资产不存在" });
+
+      const views = asset.multiViewUrls ? JSON.parse(asset.multiViewUrls) : {};
+      const missing = (["closeup", "front", "side", "back"] as const).filter(v => !views[v]);
+      if (missing.length > 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `请先生成所有视角图，缺少：${missing.map(v => ({ closeup: "近景", front: "正视", side: "侧视", back: "背视" }[v])).join("、")}` });
+      }
+
+      try {
+        const sharp = (await import("sharp")).default;
+
+        // 下载4张视角图
+        const viewOrder = ["closeup", "front", "side", "back"] as const;
+        const buffers: Buffer[] = [];
+        for (const v of viewOrder) {
+          const resp = await fetch(views[v]);
+          buffers.push(Buffer.from(await resp.arrayBuffer()));
+        }
+
+        // 获取各图尺寸，统一高度为最大高度
+        const metas = await Promise.all(buffers.map(b => sharp(b).metadata()));
+        const targetH = Math.max(...metas.map(m => m.height ?? 900));
+
+        // 将每张图缩放到统一高度，保持宽高比
+        const resized: { buf: Buffer; w: number }[] = [];
+        for (let i = 0; i < 4; i++) {
+          const origW = metas[i].width ?? 600;
+          const origH = metas[i].height ?? 900;
+          const newW = Math.round(origW * targetH / origH);
+          const buf = await sharp(buffers[i]).resize(newW, targetH).png().toBuffer();
+          resized.push({ buf, w: newW });
+        }
+
+        // 计算总宽度，拼合
+        const totalW = resized.reduce((s, r) => s + r.w, 0);
+        let offsetX = 0;
+        const composites: { input: Buffer; left: number; top: number }[] = [];
+        for (const r of resized) {
+          composites.push({ input: r.buf, left: offsetX, top: 0 });
+          offsetX += r.w;
+        }
+
+        const merged = await sharp({
+          create: { width: totalW, height: targetH, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+        })
+          .composite(composites)
+          .png()
+          .toBuffer();
+
+        const fileKey = `assets/${ctx.user.id}/${input.id}-chardesign-merged-${nanoid(8)}.png`;
+        const { url: s3Url } = await storagePut(fileKey, merged, "image/png");
 
         await addAssetHistory({
           assetId: input.id,
           userId: ctx.user.id,
           imageType: "chardesign",
           imageUrl: s3Url,
-          prompt: designPrompt,
+          prompt: "merged from 4 view images: closeup + front + side + back",
         });
 
         await updateAsset(input.id, ctx.user.id, {
           mainImageUrl: s3Url,
           generationModel: "nano-banana-pro",
           status: "done",
-          ...(input.nanoPrompt && { mainPrompt: input.nanoPrompt }),
         });
 
         return { success: true, imageUrl: s3Url };
       } catch (err) {
-        await updateAsset(input.id, ctx.user.id, { status: "failed" });
         if (err instanceof TRPCError) throw err;
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片生成失败，请重试" });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "图片拼合失败，请重试" });
       }
     }),
 
-  // ── 人物资产专用：切分 16:9 设计主图为 4 张图（近景/正视/侧视/后视）──
+  // ── 人物资产专用：从合图中切分出4张视角图（兼容旧版合图）──
   splitCharacterDesign: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
@@ -213,22 +299,18 @@ export const assetsRouter = router({
 
       try {
         const sharp = (await import("sharp")).default;
-
-        // 下载主图
         const imgResp = await fetch(asset.mainImageUrl);
-        let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
-        let metadata = await sharp(imgBuffer).metadata();
-        let W = metadata.width ?? 1600;
-        let H = metadata.height ?? 900;
-
-        // 4列横切：左1/4近景 | 中左1/4正视 | 中右1/4侧视 | 右1/4后视
+        const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+        const metadata = await sharp(imgBuffer).metadata();
+        const W = metadata.width ?? 1600;
+        const H = metadata.height ?? 900;
         const colW = Math.floor(W / 4);
 
         const crops = [
-          { key: "closeup", label: "近景",   left: 0,         top: 0, width: colW,           height: H },
-          { key: "front",   label: "正视图", left: colW,      top: 0, width: colW,           height: H },
-          { key: "side",    label: "侧视图", left: colW * 2,  top: 0, width: colW,           height: H },
-          { key: "back",    label: "后视图", left: colW * 3,  top: 0, width: W - colW * 3,   height: H },
+          { key: "closeup", label: "近景",   left: 0,         top: 0, width: colW,         height: H },
+          { key: "front",   label: "正视图", left: colW,      top: 0, width: colW,         height: H },
+          { key: "side",    label: "侧视图", left: colW * 2,  top: 0, width: colW,         height: H },
+          { key: "back",    label: "后视图", left: colW * 3,  top: 0, width: W - colW * 3, height: H },
         ];
 
         const results: Record<string, string> = {};
@@ -237,27 +319,15 @@ export const assetsRouter = router({
         for (const crop of crops) {
           const cropped = await sharp(imgBuffer)
             .extract({ left: crop.left, top: crop.top, width: crop.width, height: crop.height })
-            .png()
-            .toBuffer();
+            .png().toBuffer();
           const fileKey = `assets/${ctx.user.id}/${input.id}-${crop.key}-${nanoid(8)}.png`;
           const { url: s3Url } = await storagePut(fileKey, cropped, "image/png");
           results[crop.key] = s3Url;
           existing[crop.key] = s3Url;
-
-          await addAssetHistory({
-            assetId: input.id,
-            userId: ctx.user.id,
-            imageType: crop.key,
-            imageUrl: s3Url,
-            prompt: `split from character design sheet: ${crop.label}`,
-          });
+          await addAssetHistory({ assetId: input.id, userId: ctx.user.id, imageType: crop.key, imageUrl: s3Url, prompt: `split: ${crop.label}` });
         }
 
-        await updateAsset(input.id, ctx.user.id, {
-          multiViewUrls: JSON.stringify(existing),
-          status: "done",
-        });
-
+        await updateAsset(input.id, ctx.user.id, { multiViewUrls: JSON.stringify(existing), status: "done" });
         await deductCredits(ctx.user.id, ctx.user.credits, CREDITS.splitCharDesign * 4, `切分角色设计图: ${asset.name}`);
 
         return { success: true, splitUrls: results };
