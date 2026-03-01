@@ -117,9 +117,7 @@ function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
       const result = await uploadMutation.mutateAsync({ id: assetId, imageBase64: base64, mimeType });
       updateEpisodeAsset(asset.id, { uploadedImageUrl: result.uploadedImageUrl });
       utils.assets.list.invalidate();
-      toast.success("参考图已上传，正在自动生成三视图...");
-      // 自动触发生成三视图
-      await handleGenerateTriview(result.uploadedImageUrl);
+      toast.success("参考图已上传，请点击「生成三视图」按鈕开始生成");
     } catch (err) { toast.error(`上传失败：${err instanceof Error ? err.message : "未知错误"}`); }
     finally { setUploading(false); }
   };

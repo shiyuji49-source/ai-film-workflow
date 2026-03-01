@@ -159,8 +159,8 @@ export const assetsRouter = router({
       try {
         // 使用用户提供的 NBP 提示词，或使用默认的角色设计图提示词
         const basePrompt = input.nanoPrompt?.trim() || "";
-        // 强制横版 16:9 布局：2x2 网格，上行近景+正视，下行侧视+背视
-        const layoutInstruction = `WIDE HORIZONTAL character design reference sheet. Image is WIDER THAN TALL (landscape/horizontal orientation, 16:9 aspect ratio). Layout: 2 rows × 2 columns grid. TOP-LEFT: large close-up of face and upper body (bust shot). TOP-RIGHT: full-body front view, standing straight. BOTTOM-LEFT: full-body side view (profile). BOTTOM-RIGHT: full-body back view. Each panel separated by thin white lines. Pure white background. Same character, same costume, same art style in all 4 panels. No text labels. Clean character model sheet. The overall image canvas is WIDE (landscape), NOT tall (portrait).`;
+        // 强制横版 16:9 布局：左1/3大头像，右2/3三视图（正/侧/背）左右排列
+        const layoutInstruction = `CHARACTER DESIGN SHEET. HORIZONTAL LANDSCAPE FORMAT, wider than tall, 16:9 aspect ratio. Divided into FOUR vertical columns side by side (left to right): [Column 1 - leftmost, 1/4 width] Large portrait/bust close-up of the character's face and upper body, filling the full height. [Column 2 - 1/4 width] Full-body FRONT VIEW, standing pose, full height. [Column 3 - 1/4 width] Full-body SIDE VIEW (profile), standing pose, full height. [Column 4 - rightmost, 1/4 width] Full-body BACK VIEW, standing pose, full height. All four panels are arranged horizontally in ONE ROW. Pure white background. No text labels. Clean anime character model sheet style. The image is LANDSCAPE (wide), NOT portrait (tall).`;
         const designPrompt = basePrompt
           ? `${layoutInstruction} Character description: ${basePrompt}. Maintain exact same art style and character appearance as the reference image.`
           : `${layoutInstruction} Maintain exact same art style and character appearance as the reference image. High quality, clean linework.`;
@@ -221,17 +221,14 @@ export const assetsRouter = router({
         let W = metadata.width ?? 1600;
         let H = metadata.height ?? 900;
 
-        // 2x2 网格布局切分：不旋转，按实际尺寸平分为 2行×2列
-        // 上左：近景 | 上右：正视图
-        // 下左：侧视图 | 下右：后视图
-        const halfW = Math.floor(W / 2);
-        const halfH = Math.floor(H / 2);
+        // 4列横切：左1/4近景 | 中左1/4正视 | 中右1/4侧视 | 右1/4后视
+        const colW = Math.floor(W / 4);
 
         const crops = [
-          { key: "closeup", label: "近景",   left: 0,      top: 0,      width: halfW,       height: halfH },
-          { key: "front",   label: "正视图", left: halfW,  top: 0,      width: W - halfW,   height: halfH },
-          { key: "side",    label: "侧视图", left: 0,      top: halfH,  width: halfW,       height: H - halfH },
-          { key: "back",    label: "后视图", left: halfW,  top: halfH,  width: W - halfW,   height: H - halfH },
+          { key: "closeup", label: "近景",   left: 0,         top: 0, width: colW,           height: H },
+          { key: "front",   label: "正视图", left: colW,      top: 0, width: colW,           height: H },
+          { key: "side",    label: "侧视图", left: colW * 2,  top: 0, width: colW,           height: H },
+          { key: "back",    label: "后视图", left: colW * 3,  top: 0, width: W - colW * 3,   height: H },
         ];
 
         const results: Record<string, string> = {};

@@ -453,7 +453,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
                 <Download className="w-2.5 h-2.5" />下载主图
               </a>
               <span className="text-[10px]" style={{ color: S.dim }}>
-                布局：2×2 网格（左上近景·右上正面·左下侧面·右下背面）
+                布局：左1/4 近景头像 | 右3/4 正面·侧面·背面三视图
               </span>
             </div>
           </div>
@@ -462,7 +462,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
             <ImageIcon className="w-8 h-8 mx-auto mb-2" style={{ color: "oklch(0.30 0.006 240)" }} />
             <p className="text-xs" style={{ color: S.dim }}>
               {char.uploadedImageUrl
-                ? "点击「生成主图」，Nano Banana Pro 将生成 2×2 网格角色设计图（近景+正面+侧面+背面）"
+                ? "点击「生成主图」，Nano Banana Pro 将生成横版角色设计图（左1/4近景头像 + 右3/4正面·侧面·背面三视图）"
                 : "请先上传 MJ 参考图"}
             </p>
           </div>
