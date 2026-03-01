@@ -6,11 +6,11 @@ import { ENV } from "../_core/env";
 
 // Gemini API helper --------------------------------------------------------
 
-async function callGemini(prompt: string, maxOutputTokens = 65536): Promise<string> {
+async function callGemini(prompt: string, maxOutputTokens = 65536, model = "gemini-2.5-pro-preview-06-05"): Promise<string> {
   const apiKey = ENV.geminiApiKey;
   if (!apiKey) throw new Error("GEMINI_API_KEY 未配置");
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
@@ -44,9 +44,17 @@ async function callGemini(prompt: string, maxOutputTokens = 65536): Promise<stri
     throw new Error("AI 输出超出长度限制，请减少单次生成的镜头数量（建议每集时长不超过 5 分钟）");
   }
 
-  const text = candidate?.content?.parts?.[0]?.text ?? "";
+   const text = candidate?.content?.parts?.[0]?.text ?? "";
   return text;
 }
+
+// 剧本解析用：gemini-2.5-flash-preview（速度快，适合结构化输出）
+const callGeminiFlash = (prompt: string, maxOutputTokens = 65536) =>
+  callGemini(prompt, maxOutputTokens, "gemini-2.5-flash-preview-05-20");
+
+// MJ 提示词生成用：gemini-2.5-pro-preview（质量高，适合创意性内容生成）
+const callGeminiPro = (prompt: string, maxOutputTokens = 8192) =>
+  callGemini(prompt, maxOutputTokens, "gemini-2.5-pro-preview-06-05");
 
 // Router -------------------------------------------------------------------
 
@@ -131,7 +139,7 @@ ${input.scriptText.slice(0, 80000)}
   ]
 }`;
 
-      const raw = await callGemini(prompt, 65536);
+      const raw = await callGeminiFlash(prompt, 65536);
       // 清理 markdown 代码块
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as {
@@ -163,6 +171,13 @@ ${input.scriptText.slice(0, 80000)}
     .mutation(async ({ input }) => {
       const { name, isMecha, appearance, costume, marks, styleZh, styleEn } = input;
 
+      // 根据风格大类判断渲染方式要求
+      const is2D = styleZh?.includes("2D") || styleEn?.includes("2D") || styleEn?.includes("hand-drawn") || styleEn?.includes("anime") || styleEn?.includes("cel");
+      const styleEnStr = styleEn ? `\n- 风格关键词（必须在英文提示词中包含）：${styleEn}` : "";
+      const renderingNote = is2D
+        ? "- 注意：这是2D动画风格，英文提示词必须体现手绘线条、平途上色或赛璐璐上色等典型2D动画特征，不得使用写实3D渲染、照片级真实感、次表面散射等写实渲染词汇"
+        : "";
+
       const prompt = isMecha
         ? `你是专业的AI影片制作提示词工程师。请为以下机甲角色生成一张用于 Midjourney 7（MJ7）的竖版单张参考图提示词。
 
@@ -179,11 +194,12 @@ ${input.scriptText.slice(0, 80000)}
 - 正面视角，全身展示，清晰展现机甲结构
 - 强调金属质感、能量核心、装甲分层
 - 中文提示词：详细描述机甲外观，包含材质、光效、科技感
-- 英文提示词：对应的英文版本，用于直接输入MJ7
+- 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr}
 - 英文提示词末尾加上：--ar 2:3 --style raw --q 2
 - 不要出现@符号，不要引用具体作品名称
+${renderingNote}
 
-请严格输出以下JSON格式：
+请严格输出以下输出格式：
 {
   "zh": "中文提示词内容",
   "en": "English prompt content --ar 2:3 --style raw --q 2"
@@ -203,17 +219,18 @@ ${input.scriptText.slice(0, 80000)}
 - 正面站姿，全身展示，面部清晰可见
 - 强调人物气质、服装细节、面部特征
 - 中文提示词：详细描述人物外貌、服装、神态、光线
-- 英文提示词：对应的英文版本，用于直接输入MJ7
+- 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr}
 - 英文提示词末尾加上：--ar 2:3 --style raw --q 2
 - 不要出现@符号，不要引用具体作品名称
+${renderingNote}
 
-请严格输出以下JSON格式：
+请严格输出以下输出格式：
 {
   "zh": "中文提示词内容",
   "en": "English prompt content --ar 2:3 --style raw --q 2"
 }`;
 
-      const raw = await callGemini(prompt);
+      const raw = await callGeminiPro(prompt);
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as { zh: string; en: string };
       return parsed;
@@ -233,6 +250,13 @@ ${input.scriptText.slice(0, 80000)}
       const { type, name, description, episodeContext, styleZh, styleEn } = input;
 
       const isScene = type === "scene";
+      // 根据风格大类判断渲染方式要求
+      const is2D = styleZh?.includes("2D") || styleEn?.includes("2D") || styleEn?.includes("hand-drawn") || styleEn?.includes("anime") || styleEn?.includes("cel");
+      const styleEnStr = styleEn ? `\n- 风格关键词（必须在英文提示词中包含）：${styleEn}` : "";
+      const renderingNote = is2D
+        ? "- 注意：这是2D动画风格，英文提示词必须体现手绘背景、平途色块、动画色调等典型2D动画场景特征，不得使用照片级真实感、全局光照、物理渲染等写实渲染词汇"
+        : "";
+
       const prompt = isScene
         ? `你是专业的AI影片制作提示词工程师。请为以下场景生成用于 Midjourney 7（MJ7）的多角度场景参考图提示词。
 
@@ -247,11 +271,12 @@ ${input.scriptText.slice(0, 80000)}
 - 展现场景的空间感、氛围、光线、材质
 - 无人物，纯场景环境
 - 中文提示词：详细描述场景的视觉元素、光影、氛围、色调
-- 英文提示词：对应的英文版本，用于直接输入MJ7
+- 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr}
 - 英文提示词末尾加上：--ar 16:9 --style raw --q 2
 - 不要出现@符号，不要引用具体作品名称
+${renderingNote}
 
-请严格输出以下JSON格式：
+请严格输出以下输出格式：
 {
   "zh": "中文提示词内容",
   "en": "English prompt content --ar 16:9 --style raw --q 2"
@@ -269,17 +294,18 @@ ${input.scriptText.slice(0, 80000)}
 - 纯黑色或深色背景，产品展示风格
 - 清晰展示道具的外观、材质、细节
 - 中文提示词：详细描述道具的外观、材质、光泽、特殊效果
-- 英文提示词：对应的英文版本，用于直接输入MJ7
+- 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr}
 - 英文提示词末尾加上：--ar 1:1 --style raw --q 2
 - 不要出现@符号，不要引用具体作品名称
+${renderingNote}
 
-请严格输出以下JSON格式：
+请严格输出以下输出格式：
 {
   "zh": "中文提示词内容",
   "en": "English prompt content --ar 1:1 --style raw --q 2"
 }`;
 
-      const raw = await callGemini(prompt);
+      const raw = await callGeminiPro(prompt);
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as { zh: string; en: string };
       return parsed;
@@ -351,7 +377,7 @@ ${input.scriptText.slice(0, 80000)}
   ]
 }`;
 
-      const raw = await callGemini(prompt, 65536);
+      const raw = await callGeminiPro(prompt, 65536);
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as {
         shots: Array<{
@@ -421,7 +447,7 @@ ${shotsDesc}
 
 请直接输出提示词文本，不要有任何额外说明或JSON包裹。`;
 
-      const raw = await callGemini(prompt);
+      const raw = await callGeminiPro(prompt);
       // 清理可能的markdown代码块
       const cleaned = raw.replace(/^```[\w]*\s*/m, "").replace(/```\s*$/m, "").trim();
       return { prompt: cleaned };
