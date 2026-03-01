@@ -9,6 +9,8 @@ import { CheckCircle2, ChevronRight, Wand2, Plus, Trash2, Copy, Check, Loader2, 
 import { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { AIEstimateHint } from "@/components/AIEstimateHint";
+import { GEMINI_ESTIMATE_SECS } from "@shared/const";
 
 function CopyButton({ text, label = "复制" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -287,6 +289,7 @@ export default function Phase4() {
                       {isGeneratingAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
                       {isGeneratingAll ? "AI 生成中…" : "一键 AI 生成全部"}
                     </Button>
+                    <AIEstimateHint isLoading={isGeneratingAll} min={GEMINI_ESTIMATE_SECS.generateVideoPrompt.min} max={GEMINI_ESTIMATE_SECS.generateVideoPrompt.max} />
                     {epSegs.length > 0 && (
                       <Button onClick={() => handleCopyAll(ep.id)} size="sm" variant="outline"
                         className="flex items-center gap-1.5 text-xs h-7"

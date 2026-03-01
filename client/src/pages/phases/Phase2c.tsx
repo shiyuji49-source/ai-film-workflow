@@ -13,6 +13,8 @@ import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import type { EpisodeAsset } from "@/contexts/ProjectContext";
+import { AIEstimateHint } from "@/components/AIEstimateHint";
+import { GEMINI_ESTIMATE_SECS } from "@shared/const";
 
 const S = {
   card: { background: "oklch(0.15 0.006 240)", border: "1px solid oklch(0.22 0.006 240)", borderRadius: "8px" } as React.CSSProperties,
@@ -201,9 +203,12 @@ function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)", color: S.amber, fontFamily: S.mono }}>STEP 1</span>
                 <span className="text-xs font-semibold" style={{ color: S.amber }}>MJ7 提示词</span>
               </div>
-              <Button size="sm" onClick={handleGenerateMJ} disabled={generatingMJ} style={{ background: "oklch(0.75 0.17 65 / 0.12)", border: "1px solid oklch(0.75 0.17 65 / 0.35)", color: S.amber }}>
-                {generatingMJ ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : <><Wand2 className="w-3 h-3 mr-1" />{parsedPrompt ? "重新生成" : "AI 生成"}</>}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={handleGenerateMJ} disabled={generatingMJ} style={{ background: "oklch(0.75 0.17 65 / 0.12)", border: "1px solid oklch(0.75 0.17 65 / 0.35)", color: S.amber }}>
+                  {generatingMJ ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : <><Wand2 className="w-3 h-3 mr-1" />{parsedPrompt ? "重新生成" : "AI 生成"}</>}
+                </Button>
+                <AIEstimateHint isLoading={generatingMJ} min={GEMINI_ESTIMATE_SECS.generateAsset.min} max={GEMINI_ESTIMATE_SECS.generateAsset.max} />
+              </div>
             </div>
             {parsedPrompt ? (
               <div className="space-y-1.5">
@@ -241,10 +246,13 @@ function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
                 <span className="text-xs font-semibold" style={{ color: S.blue }}>Nano 生成三视图（正面 / 侧面 / 背面）</span>
                 {!asset.uploadedImageUrl && <span className="text-[10px]" style={{ color: S.dim }}>请先上传参考图</span>}
               </div>
-              <Button size="sm" onClick={() => handleGenerateTriview()} disabled={generatingTriview || !asset.uploadedImageUrl}
-                style={{ background: asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.60 0.18 240 / 0.12)", border: `1px solid ${asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.60 0.18 240 / 0.35)"}`, color: asset.mainImageUrl ? S.purple : S.blue }}>
-                {generatingTriview ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : asset.mainImageUrl ? <><RefreshCw className="w-3 h-3 mr-1" />重新生成</> : <><Wand2 className="w-3 h-3 mr-1" />生成三视图</>}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => handleGenerateTriview()} disabled={generatingTriview || !asset.uploadedImageUrl}
+                  style={{ background: asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.60 0.18 240 / 0.12)", border: `1px solid ${asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.60 0.18 240 / 0.35)"}`, color: asset.mainImageUrl ? S.purple : S.blue }}>
+                  {generatingTriview ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : asset.mainImageUrl ? <><RefreshCw className="w-3 h-3 mr-1" />重新生成</> : <><Wand2 className="w-3 h-3 mr-1" />生成三视图</>}
+                </Button>
+                <AIEstimateHint isLoading={generatingTriview} min={GEMINI_ESTIMATE_SECS.generateAsset.min} max={GEMINI_ESTIMATE_SECS.generateAsset.max} />
+              </div>
             </div>
             {asset.mainImageUrl ? (
               <div className="rounded overflow-hidden" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)" }}>

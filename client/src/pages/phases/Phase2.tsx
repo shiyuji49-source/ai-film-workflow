@@ -12,6 +12,8 @@ import {
 import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { AIEstimateHint } from "@/components/AIEstimateHint";
+import { GEMINI_ESTIMATE_SECS } from "@shared/const";
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const S = {
@@ -311,10 +313,13 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
             <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.75 0.17 65 / 0.15)", border: "1px solid oklch(0.75 0.17 65 / 0.3)", color: S.amber, fontFamily: S.mono }}>STEP 1</span>
             <span className="text-xs font-semibold" style={{ color: S.amber, fontFamily: S.grotesk }}>MJ7 提示词</span>
           </div>
-          <Button size="sm" onClick={handleGenerateMJ} disabled={generatingMJ}
-            style={{ background: "oklch(0.75 0.17 65 / 0.12)", border: "1px solid oklch(0.75 0.17 65 / 0.35)", color: S.amber }}>
-            {generatingMJ ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : <><Wand2 className="w-3 h-3 mr-1" />{char.promptZh ? "重新生成" : "AI 生成"}</>}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={handleGenerateMJ} disabled={generatingMJ}
+              style={{ background: "oklch(0.75 0.17 65 / 0.12)", border: "1px solid oklch(0.75 0.17 65 / 0.35)", color: S.amber }}>
+              {generatingMJ ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : <><Wand2 className="w-3 h-3 mr-1" />{char.promptZh ? "重新生成" : "AI 生成"}</>}
+            </Button>
+            <AIEstimateHint isLoading={generatingMJ} min={GEMINI_ESTIMATE_SECS.generateCharacter.min} max={GEMINI_ESTIMATE_SECS.generateCharacter.max} />
+          </div>
         </div>
         {char.promptZh && char.promptEn ? (
           <div className="space-y-2">

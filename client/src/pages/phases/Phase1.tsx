@@ -12,6 +12,8 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { extractTextFromFile, detectFormat, ACCEPTED_FORMATS, formatLabel } from "@/lib/scriptParser";
 import { trpc } from "@/lib/trpc";
+import { AIEstimateHint } from "@/components/AIEstimateHint";
+import { GEMINI_ESTIMATE_SECS } from "@shared/const";
 
 export default function Phase1() {
   const { projectInfo, updateProjectInfo, scriptText, setScriptText,
@@ -163,12 +165,19 @@ export default function Phase1() {
           <input ref={fileInputRef} type="file" accept={ACCEPTED_FORMATS} className="hidden" onChange={handleFileUpload} />
         </div>
 
-        <Button onClick={handleAnalyze} disabled={isAnalyzing || !scriptText.trim()}
-          className="flex items-center gap-2"
-          style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
-          <Wand2 className="w-4 h-4" />
-          {isAnalyzing ? "解析中..." : "AI 解析剧本"}
-        </Button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button onClick={handleAnalyze} disabled={isAnalyzing || !scriptText.trim()}
+            className="flex items-center gap-2"
+            style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
+            <Wand2 className="w-4 h-4" />
+            {isAnalyzing ? "解析中..." : "AI 解析剧本"}
+          </Button>
+          <AIEstimateHint
+            isLoading={isAnalyzing}
+            min={GEMINI_ESTIMATE_SECS.analyzeScript.min}
+            max={GEMINI_ESTIMATE_SECS.analyzeScript.max}
+          />
+        </div>
       </section>
 
       {/* 1.2 Basic Info */}

@@ -3,10 +3,21 @@ import { z } from "zod";
 import * as db from "../db";
 import { publicProcedure, router } from "../_core/trpc";
 import { ENV } from "../_core/env";
+import {
+  GEMINI_PRO_MODEL,
+  GEMINI_FLASH_MODEL,
+  GEMINI_THINKING_HIGH,
+  GEMINI_THINKING_LOW,
+} from "../../shared/const";
 
 // Gemini API helper --------------------------------------------------------
 
-async function callGemini(prompt: string, maxOutputTokens = 65536, model = "gemini-3.1-pro-preview"): Promise<string> {
+async function callGemini(
+  prompt: string,
+  maxOutputTokens = 65536,
+  model = GEMINI_PRO_MODEL,
+  thinkingLevel: string = GEMINI_THINKING_HIGH
+): Promise<string> {
   const apiKey = ENV.geminiApiKey;
   if (!apiKey) throw new Error("GEMINI_API_KEY 未配置");
 
@@ -16,6 +27,8 @@ async function callGemini(prompt: string, maxOutputTokens = 65536, model = "gemi
     generationConfig: {
       temperature: 0.7,
       maxOutputTokens,
+      // Gemini 3 系列特有参数：控制内部思考深度
+      thinkingConfig: { thinkingBudget: thinkingLevel === GEMINI_THINKING_LOW ? 512 : -1 },
     },
   };
 
@@ -48,13 +61,13 @@ async function callGemini(prompt: string, maxOutputTokens = 65536, model = "gemi
   return text;
 }
 
-// 剧本解析用：gemini-3-flash-preview（速度快，适合结构化输出）
+// 剧本解析用：Flash 模型 + thinking low（速度快，适合结构化输出）
 const callGeminiFlash = (prompt: string, maxOutputTokens = 65536) =>
-  callGemini(prompt, maxOutputTokens, "gemini-3-flash-preview");
+  callGemini(prompt, maxOutputTokens, GEMINI_FLASH_MODEL, GEMINI_THINKING_LOW);
 
-// MJ 提示词生成用：gemini-3.1-pro-preview（最新旗舰模型，适合创意性内容生成）
+// MJ 提示词生成用：Pro 模型 + thinking high（最高质量创意性内容生成）
 const callGeminiPro = (prompt: string, maxOutputTokens = 8192) =>
-  callGemini(prompt, maxOutputTokens, "gemini-3.1-pro-preview");
+  callGemini(prompt, maxOutputTokens, GEMINI_PRO_MODEL, GEMINI_THINKING_HIGH);
 
 // Router -------------------------------------------------------------------
 

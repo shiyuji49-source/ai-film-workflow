@@ -1,4 +1,5 @@
 import { ENV } from "./env";
+import { GEMINI_FLASH_MODEL } from "../../shared/const";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -280,7 +281,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-3-flash-preview",
+    model: GEMINI_FLASH_MODEL,
     messages: messages.map(normalizeMessage),
   };
 

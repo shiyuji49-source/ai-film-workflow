@@ -11,6 +11,8 @@ import { CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2, Wand2, BarChart2
 import { useState, useMemo, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { AIEstimateHint } from "@/components/AIEstimateHint";
+import { GEMINI_ESTIMATE_SECS } from "@shared/const";
 
 // ─── Emotion Timeline Component ───────────────────────────────────────────────
 function EmotionTimeline({ shots }: { shots: Array<{ number: number; emotion: string; emotionLevel: number; duration: number; type: string }> }) {
@@ -522,16 +524,17 @@ export default function Phase3() {
                       {ep.duration} 分钟 · 建议 {ep.duration * 20}–{ep.duration * 30} 个镜头
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button onClick={handleAutoGenerate} size="sm" disabled={generatingEp === ep.id}
                       className="flex items-center gap-1.5 text-xs h-7"
                       style={{ background: "oklch(0.75 0.17 65)", color: "oklch(0.1 0.005 240)", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
                       {generatingEp === ep.id ? (
                         <><Loader2 className="w-3 h-3 animate-spin" />AI 生成中…</>
                       ) : (
-                        <><Wand2 className="w-3 h-3" />AI 自动生成分镜</>
+                        <><Wand2 className="w-3 h-3" />AI 自动生成分镇</>
                       )}
                     </Button>
+                    <AIEstimateHint isLoading={generatingEp === ep.id} min={GEMINI_ESTIMATE_SECS.generateShots.min} max={GEMINI_ESTIMATE_SECS.generateShots.max} />
                     <Button onClick={() => addShot(ep.id)} size="sm" variant="outline"
                       className="flex items-center gap-1.5 text-xs h-7"
                       style={{ borderColor: "oklch(0.35 0.008 240)", color: "oklch(0.70 0.008 240)", background: "transparent" }}>

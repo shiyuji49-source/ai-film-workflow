@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ENV } from "./_core/env";
+import { GEMINI_PRO_MODEL } from "../shared/const";
 
 describe("Gemini API Key", () => {
   it("should have GEMINI_API_KEY configured", () => {
@@ -9,7 +10,7 @@ describe("Gemini API Key", () => {
 
   it("should successfully call Gemini API", async () => {
     const apiKey = ENV.geminiApiKey;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_PRO_MODEL}:generateContent?key=${apiKey}`;
     const body = {
       contents: [{ parts: [{ text: 'Reply with exactly this JSON: {"status":"ok"}' }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 500 },
