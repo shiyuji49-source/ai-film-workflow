@@ -186,9 +186,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
       const result = await uploadMutation.mutateAsync({ id: assetId, imageBase64: base64, mimeType });
       updateCharacter(char.id, { uploadedImageUrl: result.uploadedImageUrl });
       utils.assets.list.invalidate();
-      toast.success("参考图已上传，正在自动生成角色设计主图...");
-      // 自动触发生成主图
-      await handleGenerateDesign(result.uploadedImageUrl);
+      toast.success("参考图已上传，请点击「生成角色设计主图」按鈕开始生成");
     } catch (err) {
       toast.error(`上传失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
@@ -404,7 +402,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.55 0.18 290 / 0.15)", border: "1px solid oklch(0.55 0.18 290 / 0.3)", color: S.purple, fontFamily: S.mono }}>STEP 2</span>
-          <span className="text-xs font-semibold" style={{ color: S.purple, fontFamily: S.grotesk }}>上传 MJ 参考图（上传后一键生成）</span>
+          <span className="text-xs font-semibold" style={{ color: S.purple, fontFamily: S.grotesk }}>上传 MJ 参考图</span>
         </div>
         <div>
           <p className="text-[10px] mb-1.5" style={{ color: S.dim }}>MJ 参考图（用 MJ7 生成后上传，NBP 提示词已预设）</p>
@@ -445,8 +443,8 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
         {/* 主图展示 */}
         {designImage ? (
           <div className="space-y-3">
-            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid oklch(0.25 0.008 240)", aspectRatio: "16/9", background: "oklch(0.08 0.003 240)" }}>
-              <img src={designImage} alt="角色设计主图" className="w-full h-full object-contain" />
+            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid oklch(0.25 0.008 240)", background: "oklch(0.08 0.003 240)" }}>
+              <img src={designImage} alt="角色设计主图" className="w-full h-auto block" style={{ maxHeight: "600px", objectFit: "contain" }} />
             </div>
             <div className="flex items-center gap-2">
               <a href={designImage} download target="_blank" rel="noreferrer"
@@ -455,7 +453,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
                 <Download className="w-2.5 h-2.5" />下载主图
               </a>
               <span className="text-[10px]" style={{ color: S.dim }}>
-                布局：左1/3 近景 | 右2/3 正面·侧面·背面三视图
+                布局：2×2 网格（左上近景·右上正面·左下侧面·右下背面）
               </span>
             </div>
           </div>
@@ -464,7 +462,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
             <ImageIcon className="w-8 h-8 mx-auto mb-2" style={{ color: "oklch(0.30 0.006 240)" }} />
             <p className="text-xs" style={{ color: S.dim }}>
               {char.uploadedImageUrl
-                ? "点击「生成主图」，Nano Banana Pro 将生成含近景+三视图的16:9角色设计图"
+                ? "点击「生成主图」，Nano Banana Pro 将生成 2×2 网格角色设计图（近景+正面+侧面+背面）"
                 : "请先上传 MJ 参考图"}
             </p>
           </div>
