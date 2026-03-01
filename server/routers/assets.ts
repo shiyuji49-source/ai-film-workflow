@@ -267,12 +267,36 @@ export const assetsRouter = router({
           offsetX += r.w;
         }
 
-        const merged = await sharp({
+        const stitched = await sharp({
           create: { width: totalW, height: targetH, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
         })
           .composite(composites)
           .png()
           .toBuffer();
+
+        // 强制输出真正16:9比例：以实际宽度计算目标高度，不足则上下填白边
+        const targetW16x9 = totalW;
+        const targetH16x9 = Math.round(totalW * 9 / 16);
+        let merged: Buffer;
+        if (targetH16x9 === targetH) {
+          merged = stitched;
+        } else if (targetH16x9 > targetH) {
+          // 高度不够，上下填白边
+          const topPad = Math.floor((targetH16x9 - targetH) / 2);
+          merged = await sharp({
+            create: { width: targetW16x9, height: targetH16x9, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+          })
+            .composite([{ input: stitched, left: 0, top: topPad }])
+            .png()
+            .toBuffer();
+        } else {
+          // 高度过够，中心裁剪
+          const cropTop = Math.floor((targetH - targetH16x9) / 2);
+          merged = await sharp(stitched)
+            .extract({ left: 0, top: cropTop, width: targetW16x9, height: targetH16x9 })
+            .png()
+            .toBuffer();
+        }
 
         const fileKey = `assets/${ctx.user.id}/${input.id}-chardesign-merged-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, merged, "image/png");

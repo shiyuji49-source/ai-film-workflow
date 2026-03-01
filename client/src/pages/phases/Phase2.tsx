@@ -115,7 +115,7 @@ function ImageUploadZone({
 
 // ─── ViewPanel: 单个视角图面板 ─────────────────────────────────────────────────
 function ViewPanel({
-  viewType, label, color, imageUrl, loading, disabled, onGenerate
+  viewType, label, color, imageUrl, loading, disabled, onGenerate, onDownload
 }: {
   viewType: "closeup" | "front" | "side" | "back";
   label: string;
@@ -124,6 +124,7 @@ function ViewPanel({
   loading: boolean;
   disabled: boolean;
   onGenerate: () => void;
+  onDownload: (url: string, filename: string) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -167,13 +168,14 @@ function ViewPanel({
         }
       </div>
 
-      {/* 下载按钮 */}
+      {/* 下载按鈕 */}
       {imageUrl && (
-        <a href={imageUrl} download target="_blank" rel="noreferrer"
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] w-fit"
+        <button
+          onClick={() => onDownload(imageUrl, `${label}.png`)}
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] w-fit transition-all hover:opacity-80"
           style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.dim, fontFamily: S.mono }}>
           <Download className="w-2.5 h-2.5" />下载
-        </a>
+        </button>
       )}
     </div>
   );
@@ -288,7 +290,57 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
     }
   };
 
-  // 拼呈4张视角图为16:9合图
+  // 一键生成全部4张视角图（串行）
+  const [generatingAllViews, setGeneratingAllViews] = useState(false);
+  const handleGenerateAllViews = async () => {
+    if (!char.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
+    if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
+    setGeneratingAllViews(true);
+    const views: ("closeup" | "front" | "side" | "back")[] = ["closeup", "front", "side", "back"];
+    const fieldMap: Record<string, keyof typeof char> = {
+      closeup: "closeupImageUrl", front: "frontImageUrl", side: "sideImageUrl", back: "backImageUrl",
+    };
+    const labelMap: Record<string, string> = { closeup: "近景肖像", front: "正视全身", side: "侧视全身", back: "背视全身" };
+    for (const viewType of views) {
+      setGeneratingView(prev => ({ ...prev, [viewType]: true }));
+      try {
+        const assetId = await getOrCreateAssetId();
+        const result = await generateViewMutation.mutateAsync({
+          id: assetId,
+          viewType,
+          nanoPrompt: char.nanoPrompt || undefined,
+        });
+        updateCharacter(char.id, { [fieldMap[viewType]]: result.imageUrl });
+        toast.success(`${labelMap[viewType]}生成完成！`);
+      } catch (err) {
+        toast.error(`${labelMap[viewType]}生成失败：${err instanceof Error ? err.message : "未知错误"}`);
+      } finally {
+        setGeneratingView(prev => ({ ...prev, [viewType]: false }));
+      }
+    }
+    setGeneratingAllViews(false);
+    utils.assets.list.invalidate();
+  };
+
+  // 强制下载图片（避免跨域图片在新窗口打开）
+  const handleDownload = async (url: string, filename: string) => {
+    try {
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(url, "_blank");
+    }
+  };
+
+  // 拼呼4张视角图为16:9合图
   const handleMerge = async () => {
     const { closeupImageUrl, frontImageUrl, sideImageUrl, backImageUrl } = char;
     if (!closeupImageUrl || !frontImageUrl || !sideImageUrl || !backImageUrl) {
@@ -500,14 +552,25 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
 
       {/* STEP 3: 分别生成4张9:16视角图 */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.60 0.18 240 / 0.15)", border: "1px solid oklch(0.60 0.18 240 / 0.3)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
-          <span className="text-xs font-semibold" style={{ color: S.blue, fontFamily: S.grotesk }}>分别生成4张视角图（9:16 竖版）</span>
-          {anyViewDone && (
-            <span className="text-[10px]" style={{ color: S.dim, fontFamily: S.mono }}>
-              {[char.closeupImageUrl, char.frontImageUrl, char.sideImageUrl, char.backImageUrl].filter(Boolean).length}/4 已完成
-            </span>
-          )}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.60 0.18 240 / 0.15)", border: "1px solid oklch(0.60 0.18 240 / 0.3)", color: S.blue, fontFamily: S.mono }}>STEP 3</span>
+            <span className="text-xs font-semibold" style={{ color: S.blue, fontFamily: S.grotesk }}>分别生成4张视角图（9:16 竖版）</span>
+            {anyViewDone && (
+              <span className="text-[10px]" style={{ color: S.dim, fontFamily: S.mono }}>
+                {[char.closeupImageUrl, char.frontImageUrl, char.sideImageUrl, char.backImageUrl].filter(Boolean).length}/4 已完成
+              </span>
+            )}
+          </div>
+          <Button size="sm"
+            onClick={handleGenerateAllViews}
+            disabled={generatingAllViews || !char.uploadedImageUrl || Object.values(generatingView).some(Boolean)}
+            style={{ background: "oklch(0.60 0.18 240 / 0.12)", border: "1px solid oklch(0.60 0.18 240 / 0.35)", color: S.blue, flexShrink: 0 }}>
+            {generatingAllViews
+              ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中…</>
+              : <><Wand2 className="w-3 h-3 mr-1" />一键生成4张</>
+            }
+          </Button>
         </div>
 
         {!char.uploadedImageUrl && (
@@ -528,6 +591,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
               loading={!!generatingView[viewType]}
               disabled={!char.uploadedImageUrl}
               onGenerate={() => handleGenerateView(viewType)}
+              onDownload={handleDownload}
             />
           ))}
         </div>
@@ -577,11 +641,12 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
               <img src={designImage} alt="角色设计主图（16:9）" className="w-full h-auto block" />
             </div>
             <div className="flex items-center gap-2">
-              <a href={designImage} download target="_blank" rel="noreferrer"
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px]"
+              <button
+                onClick={() => handleDownload(designImage, `${char.name}-角色设计主图-16x9.png`)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all hover:opacity-80"
                 style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.sub, fontFamily: S.mono }}>
                 <Download className="w-2.5 h-2.5" />下载16:9合图
-              </a>
+              </button>
               <span className="text-[10px]" style={{ color: S.dim }}>
                 布局：近景肖像 | 正视全身 | 侧视全身 | 背视全身（程序拼合，比例精确）
               </span>
