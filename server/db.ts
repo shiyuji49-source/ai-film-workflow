@@ -232,7 +232,6 @@ export async function adminGetUsers(page = 1, pageSize = 50) {
 export async function adminGetAiStats() {
   const db = await getDb();
   if (!db) return [];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const logs = await db.select({
     action: creditLogs.action,
     delta: creditLogs.delta,
@@ -508,4 +507,48 @@ export async function getAssetHistory(assetId: number, imageType?: string) {
     .from(assetHistory)
     .where(conditions)
     .orderBy(assetHistory.createdAt);
+}
+
+// ─── API 设置 ──────────────────────────────────────────────────────────────────
+
+export async function getApiSetting(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const { apiSettings } = await import("../drizzle/schema");
+  const [setting] = await db
+    .select()
+    .from(apiSettings)
+    .where(eq(apiSettings.userId, userId))
+    .limit(1);
+  return setting ?? null;
+}
+
+export async function upsertApiSetting(
+  userId: number,
+  data: {
+    provider: string;
+    model: string;
+    apiKey?: string | null;
+    apiBaseUrl?: string | null;
+    lastTestStatus?: string;
+    lastTestedAt?: Date | null;
+  }
+) {
+  const db = await getDb();
+  if (!db) return;
+  const { apiSettings } = await import("../drizzle/schema");
+  const existing = await db
+    .select({ id: apiSettings.id })
+    .from(apiSettings)
+    .where(eq(apiSettings.userId, userId))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db
+      .update(apiSettings)
+      .set({ ...data })
+      .where(eq(apiSettings.userId, userId));
+  } else {
+    await db.insert(apiSettings).values({ userId, ...data });
+  }
 }

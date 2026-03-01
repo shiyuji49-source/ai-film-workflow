@@ -165,6 +165,29 @@ export const assetHistory = mysqlTable("asset_history", {
 export type AssetHistory = typeof assetHistory.$inferSelect;
 export type InsertAssetHistory = typeof assetHistory.$inferInsert;
 
+// ─── API 设置表（用户自定义 AI 提供商配置）──────────────────────────────────
+export const apiSettings = mysqlTable("api_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  /** 当前选用的提供商: gemini | openai | anthropic | kimi | custom */
+  provider: varchar("provider", { length: 32 }).notNull().default("gemini"),
+  /** 当前选用的模型名称（如 gemini-3-flash-preview） */
+  model: varchar("model", { length: 128 }).notNull().default("gemini-3-flash-preview"),
+  /** 用户自带的 API Key（加密存储，可覆盖系统默认 Key） */
+  apiKey: text("apiKey"),
+  /** 自定义 API Base URL（用于代理或本地模型） */
+  apiBaseUrl: text("apiBaseUrl"),
+  /** 最后一次检测结果: ok | error | untested */
+  lastTestStatus: varchar("lastTestStatus", { length: 16 }).default("untested"),
+  /** 最后一次检测时间 */
+  lastTestedAt: timestamp("lastTestedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ApiSetting = typeof apiSettings.$inferSelect;
+export type InsertApiSetting = typeof apiSettings.$inferInsert;
+
 // Team Members Table (reserved)
 export const teamMembers = mysqlTable("teamMembers", {
   id: int("id").autoincrement().primaryKey(),

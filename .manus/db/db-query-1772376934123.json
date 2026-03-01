@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE IF NOT EXISTS `api_settings` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `userId` int NOT NULL,\n  `provider` varchar(32) NOT NULL DEFAULT 'gemini',\n  `model` varchar(128) NOT NULL DEFAULT 'gemini-3-flash-preview',\n  `apiKey` text,\n  `apiBaseUrl` text,\n  `lastTestStatus` varchar(16) DEFAULT 'untested',\n  `lastTestedAt` timestamp,\n  `createdAt` timestamp NOT NULL DEFAULT NOW(),\n  `updatedAt` timestamp NOT NULL DEFAULT NOW() ON UPDATE NOW(),\n  CONSTRAINT `api_settings_id` PRIMARY KEY(`id`),\n  UNIQUE KEY `api_settings_userId_unique` (`userId`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute CREATE TABLE IF NOT EXISTS `api_settings` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `userId` int NOT NULL,\n  `provider` varchar(32) NOT NULL DEFAULT 'gemini',\n  `model` varchar(128) NOT NULL DEFAULT 'gemini-3-flash-preview',\n  `apiKey` text,\n  `apiBaseUrl` text,\n  `lastTestStatus` varchar(16) DEFAULT 'untested',\n  `lastTestedAt` timestamp,\n  `createdAt` timestamp NOT NULL DEFAULT NOW(),\n  `updatedAt` timestamp NOT NULL DEFAULT NOW() ON UPDATE NOW(),\n  CONSTRAINT `api_settings_id` PRIMARY KEY(`id`),\n  UNIQUE KEY `api_settings_userId_unique` (`userId`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2036
+}

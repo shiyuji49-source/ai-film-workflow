@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import {
   Film, Plus, Trash2, Copy, Download, Share2, Upload,
   FolderOpen, Clock, CheckCircle2, ChevronRight, FileJson,
-  FileText, Layers, Clapperboard, Coins, LogOut, Shield, ImageIcon,
+  FileText, Layers, Clapperboard, Coins, LogOut, Shield, ImageIcon, Settings,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import CreditsShopDialog from "@/components/CreditsShopDialog";
@@ -177,6 +177,12 @@ export default function Dashboard({ onOpenProject }: DashboardProps) {
               <Button variant="outline" size="sm"
                 style={{ borderColor: "oklch(0.60 0.15 200 / 0.5)", color: "oklch(0.60 0.15 200)", background: "oklch(0.60 0.15 200 / 0.08)", gap: 6 }}>
                 <ImageIcon size={14} /> 资产库
+              </Button>
+            </Link>
+            <Link href="/api-settings">
+              <Button variant="outline" size="sm"
+                style={{ borderColor: "oklch(0.50 0.15 240 / 0.5)", color: "oklch(0.60 0.12 240)", background: "oklch(0.50 0.15 240 / 0.08)", gap: 6 }}>
+                <Settings size={14} /> AI 设置
               </Button>
             </Link>
             {user?.role === "admin" && (

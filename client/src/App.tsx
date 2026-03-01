@@ -12,6 +12,8 @@ import AdminPage from "./pages/AdminPage";
 import CreditsPage from "./pages/CreditsPage";
 import AssetsPage from "./pages/AssetsPage";
 import AuthPage from "./pages/AuthPage";
+import ApiSettingsPage from "./pages/ApiSettingsPage";
+
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
@@ -20,6 +22,7 @@ function Router() {
       <Route path={"/admin"} component={AdminPage} />
       <Route path={"/credits"} component={CreditsPage} />
       <Route path={"/assets"} component={AssetsPage} />
+      <Route path={"/api-settings"} component={ApiSettingsPage} />
       <Route path={"/auth"}>{() => <AuthPage />}</Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
