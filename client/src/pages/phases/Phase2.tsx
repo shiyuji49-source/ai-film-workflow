@@ -167,7 +167,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
     }
   };
 
-  // 上传 MJ 参考图
+  // 上传 MJ 参考图（上传成功后自动触发生成主图）
   const handleUpload = async (base64: string, mimeType: string) => {
     if (!isAuthenticated) { toast.error("请先登录后再上传图片"); return; }
     setUploading(true);
@@ -176,7 +176,9 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
       const result = await uploadMutation.mutateAsync({ id: assetId, imageBase64: base64, mimeType });
       updateCharacter(char.id, { uploadedImageUrl: result.uploadedImageUrl });
       utils.assets.list.invalidate();
-      toast.success("参考图已上传");
+      toast.success("参考图已上传，正在自动生成角色设计主图...");
+      // 自动触发生成主图
+      await handleGenerateDesign(result.uploadedImageUrl);
     } catch (err) {
       toast.error(`上传失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
@@ -185,8 +187,9 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
   };
 
   // 生成 16:9 角色设计主图
-  const handleGenerateDesign = async () => {
-    if (!char.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
+  const handleGenerateDesign = async (uploadedUrl?: string) => {
+    const imageUrl = uploadedUrl || char.uploadedImageUrl;
+    if (!imageUrl) { toast.error("请先上传 MJ 参考图"); return; }
     if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
     setGeneratingDesign(true);
     try {
@@ -362,7 +365,7 @@ function CharacterCard({ char }: { char: ReturnType<typeof useProject>["characte
           </div>
           <div className="flex gap-2">
             <Button size="sm"
-              onClick={handleGenerateDesign}
+              onClick={() => handleGenerateDesign()}
               disabled={generatingDesign || !char.uploadedImageUrl}
               style={{
                 background: designImage ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.60 0.18 240 / 0.12)",

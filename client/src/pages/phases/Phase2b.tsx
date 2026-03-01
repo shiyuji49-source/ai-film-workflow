@@ -115,7 +115,18 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
       const result = await uploadMutation.mutateAsync({ id: assetId, imageBase64: base64, mimeType });
       updateEpisodeAsset(asset.id, { uploadedImageUrl: result.uploadedImageUrl });
       utils.assets.list.invalidate();
-      toast.success("参考图已上传");
+      toast.success("参考图已上传，正在自动生成多视角4张图...");
+      // 自动按顺序生成四个视角
+      const uploadedUrl = result.uploadedImageUrl;
+      const viewList: Array<{ viewType: "front" | "angle1" | "angle2" | "angle3"; key: keyof EpisodeAsset }> = [
+        { viewType: "front", key: "mainImageUrl" },
+        { viewType: "angle1", key: "angle1ImageUrl" },
+        { viewType: "angle2", key: "angle2ImageUrl" },
+        { viewType: "angle3", key: "angle3ImageUrl" },
+      ];
+      for (const v of viewList) {
+        await handleGenerateView(v.viewType, v.key, uploadedUrl);
+      }
     } catch (err) { toast.error(`上传失败：${err instanceof Error ? err.message : "未知错误"}`); }
     finally { setUploading(false); }
   };
@@ -127,8 +138,9 @@ function SceneAssetCard({ asset }: { asset: EpisodeAsset }) {
     { viewType: "angle3", label: "仰视角", key: "angle3ImageUrl" },
   ];
 
-  const handleGenerateView = async (viewType: "front" | "angle1" | "angle2" | "angle3", key: keyof EpisodeAsset) => {
-    if (!asset.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
+  const handleGenerateView = async (viewType: "front" | "angle1" | "angle2" | "angle3", key: keyof EpisodeAsset, uploadedUrl?: string) => {
+    const imageUrl = uploadedUrl || asset.uploadedImageUrl;
+    if (!imageUrl) { toast.error("请先上传 MJ 参考图"); return; }
     if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
     setGeneratingViews(p => ({ ...p, [viewType]: true }));
     try {

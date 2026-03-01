@@ -115,20 +115,47 @@ function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
       const result = await uploadMutation.mutateAsync({ id: assetId, imageBase64: base64, mimeType });
       updateEpisodeAsset(asset.id, { uploadedImageUrl: result.uploadedImageUrl });
       utils.assets.list.invalidate();
-      toast.success("参考图已上传");
+      toast.success("参考图已上传，正在自动生成三视图...");
+      // 自动触发生成三视图
+      await handleGenerateTriview(result.uploadedImageUrl);
     } catch (err) { toast.error(`上传失败：${err instanceof Error ? err.message : "未知错误"}`); }
     finally { setUploading(false); }
   };
 
+  // 根据道具名称推断类型，生成对应的 NBP 三视图提示词
+  const getTriviewPrompt = (name: string, customPrompt?: string): string => {
+    const n = name.toLowerCase();
+    let basePrompt = "product three-view design sheet, front view left, side view center, back view right, clean white background, studio lighting, no shadows, technical illustration style";
+    // 武器类
+    if (/剑|刀|枪|弓|战斧|武器|弹|炮|sword|blade|gun|bow|weapon|axe|spear/.test(n)) {
+      basePrompt = "weapon three-view design sheet, front view left, side view center, back view right, detailed metallic texture, clean white background, studio lighting, technical blueprint style, no shadows";
+    }
+    // 载具/交通工具类
+    else if (/车|船|飞机|機器|车辆|飞船|小船|car|vehicle|ship|aircraft|mech|robot/.test(n)) {
+      basePrompt = "vehicle three-view design sheet, front view left, side view center, back view right, mechanical details, clean white background, studio lighting, technical blueprint style, no shadows";
+    }
+    // 道具/工具类
+    else if (/道具|工具|锄|锥|阆|锂|tool|hammer|wrench|drill/.test(n)) {
+      basePrompt = "tool three-view design sheet, front view left, side view center, back view right, material texture details, clean white background, studio lighting, technical illustration style, no shadows";
+    }
+    // 容器/道具类
+    else if (/瓶|盒|笛|杆|包|袋|鼎|bottle|box|bag|container|vessel/.test(n)) {
+      basePrompt = "container three-view design sheet, front view left, side view center, back view right, material and texture details, clean white background, studio lighting, no shadows";
+    }
+    if (customPrompt) return `${basePrompt}, ${customPrompt}`;
+    return basePrompt;
+  };
+
   // 道具只生成一张三视图（front/side/back 合并在一张图里，用 front 视角触发）
-  const handleGenerateTriview = async () => {
-    if (!asset.uploadedImageUrl) { toast.error("请先上传 MJ 参考图"); return; }
+  const handleGenerateTriview = async (uploadedUrl?: string) => {
+    const imageUrl = uploadedUrl || asset.uploadedImageUrl;
+    if (!imageUrl) { toast.error("请先上传 MJ 参考图"); return; }
     if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
     setGeneratingTriview(true);
     try {
       const assetId = await getOrCreateAssetId();
-      // 使用 front 视角，Nano 提示词中指定三视图布局
-      const triviewPrompt = `product three-view design sheet, front view, side view, back view, clean white background, studio lighting, no shadows${asset.nanoPrompt ? `, ${asset.nanoPrompt}` : ""}`;
+      // 根据道具类型自动选择提示词
+      const triviewPrompt = getTriviewPrompt(asset.name || "", asset.nanoPrompt || undefined);
       const result = await generateMultiMutation.mutateAsync({ id: assetId, viewType: "front", prompt: triviewPrompt });
       updateEpisodeAsset(asset.id, { mainImageUrl: result.imageUrl });
       utils.assets.list.invalidate();
@@ -214,7 +241,7 @@ function PropAssetCard({ asset }: { asset: EpisodeAsset }) {
                 <span className="text-xs font-semibold" style={{ color: S.blue }}>Nano 生成三视图（正面 / 侧面 / 背面）</span>
                 {!asset.uploadedImageUrl && <span className="text-[10px]" style={{ color: S.dim }}>请先上传参考图</span>}
               </div>
-              <Button size="sm" onClick={handleGenerateTriview} disabled={generatingTriview || !asset.uploadedImageUrl}
+              <Button size="sm" onClick={() => handleGenerateTriview()} disabled={generatingTriview || !asset.uploadedImageUrl}
                 style={{ background: asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.12)" : "oklch(0.60 0.18 240 / 0.12)", border: `1px solid ${asset.mainImageUrl ? "oklch(0.55 0.18 290 / 0.4)" : "oklch(0.60 0.18 240 / 0.35)"}`, color: asset.mainImageUrl ? S.purple : S.blue }}>
                 {generatingTriview ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : asset.mainImageUrl ? <><RefreshCw className="w-3 h-3 mr-1" />重新生成</> : <><Wand2 className="w-3 h-3 mr-1" />生成三视图</>}
               </Button>

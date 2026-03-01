@@ -125,7 +125,7 @@ function AssetCell({ assets, type }: { assets: AssetRow[]; type: AssetType }) {
 
 export default function AssetsPage() {
   const { isAuthenticated } = useAuth();
-  const { scriptAnalysis, episodeAssets } = useProject();
+  const { scriptAnalysis, episodeAssets, characters } = useProject();
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -137,6 +137,29 @@ export default function AssetsPage() {
   const assetRows = useMemo((): AssetRow[] => {
     const rows: AssetRow[] = [];
     const episodes = scriptAnalysis?.episodes ?? [];
+
+    // 处理人物资产（Character 类型）
+    characters.forEach(char => {
+      const cloud = char.assetLibId ? cloudAssets.find(a => a.id === char.assetLibId) : null;
+      const splitImages: Record<string, string> = {};
+      if (char.closeupImageUrl) splitImages.closeup = char.closeupImageUrl;
+      if (char.frontImageUrl) splitImages.front = char.frontImageUrl;
+      if (char.sideImageUrl) splitImages.side = char.sideImageUrl;
+      if (char.backImageUrl) splitImages.back = char.backImageUrl;
+
+      rows.push({
+        id: char.assetLibId ?? -(Math.random() * 1e9 | 0),
+        name: char.name || "未命名",
+        type: "character",
+        episodeId: undefined,
+        episodeName: "全剧人物",
+        mjPrompt: char.promptEn || cloud?.mjPrompt,
+        nanoPrompt: char.nanoPrompt || cloud?.mainPrompt,
+        uploadedImageUrl: char.uploadedImageUrl || cloud?.uploadedImageUrl,
+        mainImageUrl: char.designImageUrl || char.mainImageUrl || cloud?.mainImageUrl,
+        splitImages: Object.keys(splitImages).length > 0 ? splitImages : undefined,
+      });
+    });
 
     episodeAssets.forEach(ea => {
       const ep = episodes.find(e => e.id === ea.episodeId);
@@ -188,7 +211,7 @@ export default function AssetsPage() {
     });
 
     return rows;
-  }, [episodeAssets, cloudAssets, scriptAnalysis]);
+  }, [episodeAssets, characters, cloudAssets, scriptAnalysis]);
 
   const episodes = scriptAnalysis?.episodes ?? [];
   const episodeGroups = useMemo(() => {
@@ -206,13 +229,25 @@ export default function AssetsPage() {
     });
 
     const unassigned = assetRows.filter(r => !r.episodeId);
-    if (unassigned.length > 0) {
+    const globalChars = unassigned.filter(a => a.type === "character");
+    const unassignedOthers = unassigned.filter(a => a.type !== "character");
+    // 全剧人物单独分组
+    if (globalChars.length > 0) {
+      groups.unshift({
+        id: "global-chars",
+        name: "全剧人物",
+        characters: globalChars,
+        scenes: [],
+        props: [],
+      });
+    }
+    if (unassignedOthers.length > 0) {
       groups.push({
         id: "unassigned",
         name: "未分集",
-        characters: unassigned.filter(a => a.type === "character"),
-        scenes: unassigned.filter(a => a.type === "scene"),
-        props: unassigned.filter(a => a.type === "prop"),
+        characters: [],
+        scenes: unassignedOthers.filter(a => a.type === "scene"),
+        props: unassignedOthers.filter(a => a.type === "prop"),
       });
     }
 
