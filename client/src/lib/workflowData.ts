@@ -240,6 +240,7 @@ export interface LightingType {
 }
 
 export const SHOT_TYPES: ShotType[] = [
+  // ── 叙事功能类 ──
   { name: "定场镜头", en: "Establishing Shot", role: "交代环境、时间、空间关系", timing: "每个新场景/新地点开头；重大转折后" },
   { name: "主镜头", en: "Master Shot", role: "全景展示场景内所有人物的位置关系", timing: "场景开始，建立空间感" },
   { name: "过肩镜头", en: "Over-the-Shoulder", role: "表现对话关系，保持视线连贯", timing: "对话场景，交替切换" },
@@ -250,6 +251,22 @@ export const SHOT_TYPES: ShotType[] = [
   { name: "空镜头", en: "Cutaway Shot", role: "转场、渲染氛围、暗示时间流逝", timing: "场景过渡；情绪渲染" },
   { name: "主观镜头", en: "POV Shot", role: "让观众代入角色视角", timing: "需要强烈代入感的关键时刻" },
   { name: "跟拍镜头", en: "Tracking Shot", role: "跟随角色运动，保持动态感", timing: "角色移动场景；追逐戏" },
+  { name: "双人镜头", en: "Two Shot", role: "同框展示两个角色的关系与互动", timing: "对话、对峙、情感交流场景" },
+  { name: "群像镜头", en: "Group Shot", role: "展示多人物的集体状态或阵列感", timing: "集结、出征、仪式等场景" },
+  { name: "平行剪辑镜头", en: "Parallel Cut", role: "同时展示两条平行发展的叙事线", timing: "营救与危机同步推进；决战两线" },
+  // ── 时间操控类 ──
+  { name: "慢镜头", en: "Slow Motion", role: "拉伸时间，强调动作细节与情绪张力，制造震撼感", timing: "战斗高潮、爆炸瞬间、情感决定性时刻、英雄亮相" },
+  { name: "超慢镜头", en: "Ultra Slow Motion", role: "极度拉伸时间（1/8速以下），捕捉肉眼不可见的细节", timing: "子弹/刀光穿过瞬间；水花/碎片飞溅；最强情绪定格" },
+  { name: "延时镜头", en: "Time-Lapse", role: "压缩时间，展示长时间变化过程，渲染时间流逝感", timing: "日出日落、城市变迁、季节更替、伤口愈合、建造过程" },
+  { name: "快镜头", en: "Fast Motion", role: "加速播放，制造紧迫感、喜剧感或时间压缩效果", timing: "紧张逃跑场景；时间紧迫的准备过程；喜剧段落" },
+  { name: "定格镜头", en: "Freeze Frame", role: "画面完全静止，强调某个决定性瞬间", timing: "角色做出关键决定的瞬间；高潮动作定格；片头/片尾" },
+  { name: "逆向镜头", en: "Reverse Shot", role: "画面倒放，制造超现实感或时间倒流效果", timing: "记忆回溯；时间能力展示；梦境/幻觉序列" },
+  // ── 视角与空间类 ──
+  { name: "航拍镜头", en: "Aerial Shot", role: "超高视角俯瞰，展示宏大地理环境或战场全貌", timing: "史诗级场景开场；战场全景；城市/自然景观展示" },
+  { name: "俯视镜头", en: "Bird's Eye View", role: "正上方垂直俯拍，展示空间布局与人物渺小感", timing: "迷宫/阵法俯视；角色孤立无援；城市俯瞰" },
+  { name: "仰视镜头", en: "Low Angle Shot", role: "由下向上拍摄，强调角色的威严、力量或压迫感", timing: "英雄/反派登场；高大建筑/机甲展示；权力象征" },
+  { name: "荷兰角镜头", en: "Dutch Angle", role: "倾斜构图，制造心理不安、混乱或扭曲感", timing: "反派视角；精神崩溃；世界观被颠覆的时刻" },
+  { name: "过肩俯拍", en: "High Angle Shot", role: "从上方拍摄角色，制造弱小感或被审视感", timing: "角色处于劣势；被审问；受到压制" },
 ];
 
 export const WORKFLOW_STEPS = [
@@ -310,16 +327,25 @@ export const SHOT_SIZES: ShotSize[] = [
 ];
 
 export const CAMERA_MOVEMENTS: CameraMovement[] = [
-  { name: "固定镜头", en: "Static Shot", desc: "摄像机不动，稳定叙事" },
-  { name: "推镜头", en: "Push In", desc: "向主体推进，强调重要性" },
-  { name: "拉镜头", en: "Pull Out", desc: "远离主体，揭示环境" },
-  { name: "横移", en: "Pan", desc: "水平旋转，跟随动作" },
-  { name: "垂直摇", en: "Tilt", desc: "垂直旋转，展示高度" },
-  { name: "跟拍", en: "Tracking Shot", desc: "跟随角色移动" },
-  { name: "环绕", en: "Orbit Shot", desc: "环绕主体旋转，展示全貌" },
-  { name: "手持抖动", en: "Handheld", desc: "模拟真实感，紧张氛围" },
-  { name: "升降镜头", en: "Crane Shot", desc: "垂直升降，宏大感" },
-  { name: "俯冲镜头", en: "Dive Shot", desc: "快速向下俯冲，冲击感" },
+  // ── 基础运动 ──
+  { name: "固定镜头", en: "Static Shot", desc: "摄像机不动，稳定叙事，强调主体" },
+  { name: "推镜头", en: "Push In (Dolly In)", desc: "向主体推进，强调重要性与内心状态" },
+  { name: "拉镜头", en: "Pull Out (Dolly Out)", desc: "远离主体，揭示环境，制造孤立感" },
+  { name: "横移", en: "Pan", desc: "水平旋转，跟随动作或展示全景" },
+  { name: "垂直摇", en: "Tilt", desc: "垂直旋转，展示高度或人物全身" },
+  { name: "跟拍", en: "Tracking Shot", desc: "跟随角色平行移动，保持动态感" },
+  { name: "环绕", en: "Orbit Shot (Arc Shot)", desc: "环绕主体旋转，展示全貌或强调关系" },
+  { name: "手持抖动", en: "Handheld", desc: "模拟真实感，紧张氛围，身临其境感" },
+  { name: "升降镜头", en: "Crane Shot", desc: "垂直升降，宏大感，揭示或隐藏信息" },
+  { name: "俯冲镜头", en: "Dive Shot", desc: "快速向下俯冲，冲击感与紧迫感" },
+  // ── 高级运动 ──
+  { name: "航拍运动", en: "Aerial (Drone)", desc: "无人机高空拍摄，展示宏大场景与地理全貌" },
+  { name: "稳定器滑轨", en: "Steadicam / Gimbal", desc: "超平滑连续运动，跟随角色穿越复杂场景" },
+  { name: "变焦推拉", en: "Dolly Zoom (Vertigo Effect)", desc: "镜头推进同时变焦拉远，背景形变而主体不动，制造心理震撼" },
+  { name: "吊臂镜头", en: "Jib Shot", desc: "小型升降臂，灵活升降运动，展示垂直空间关系" },
+  { name: "滑轨镜头", en: "Dolly Track", desc: "滑轨平行移动，极其平滑，展示平行叙事线" },
+  { name: "甩镜头", en: "Whip Pan", desc: "极快横移，画面模糊，常用于快速转场" },
+  { name: "第一人称镜头", en: "First-Person / GoPro", desc: "完全代入角色身体视角，战斗/驾驶/奔跑场景极强临场感" },
 ];
 
 export const SHOT_RATIOS: ShotRatio[] = [

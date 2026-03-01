@@ -87,3 +87,4 @@
 - [x] API 设置页面（/api-settings）：支持 Gemini/OpenAI/Claude/Kimi/DeepSeek 多提供商切换，实时测试 API 连接，自定义 API Key 和 Base URL，成本参考表
 - [x] Dashboard 顶栏添加「AI 设置」入口按钮
 - [x] 后端 apiSettings tRPC 路由（get/save/test），修复 db 变量初始化问题
+- [x] 补充完整镜头类型（延时镜头、慢镜头及其他专业镜头），更新 workflowData.ts、AI 分镜生成 Prompt、视频提示词生成 Prompt
