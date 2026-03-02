@@ -87,13 +87,14 @@ export default function Phase4() {
     setGeneratingSegId(segId);
     try {
       const result = await generateVideoPromptMutation.mutateAsync({
-        shots: relatedShots.map(s => ({
+          shots: relatedShots.map(s => ({
           number: s.number,
           type: s.type,
           size: s.size,
           movement: s.movement,
           description: s.description,
           vo: s.vo || "",
+          dialogue: s.dialogue || "",
           sfx: s.sfx || "",
           duration: s.duration,
           emotion: s.emotion,
@@ -148,6 +149,7 @@ export default function Phase4() {
             movement: s.movement,
             description: s.description,
             vo: s.vo || "",
+            dialogue: s.dialogue || "",
             sfx: s.sfx || "",
             duration: s.duration,
             emotion: s.emotion,

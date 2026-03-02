@@ -81,6 +81,7 @@ export interface Shot {
   movement: string;
   description: string;
   vo: string;
+  dialogue: string; // 对话台词
   sfx: string;
   duration: number;
   emotion: string;
@@ -395,6 +396,7 @@ function autoGenerateShotsForEpisode(episode: Episode, projectType: string): Sho
         type: tpl.type, size: tpl.size, movement: tpl.movement,
         description: `${sceneHint}，${charHint}，${tpl.descTemplate}`,
         vo: shotNum % 5 === 0 ? `[第${episode.number}集旁白${Math.ceil(shotNum / 5)}]` : "",
+        dialogue: "",
         sfx: tpl.sfxTemplate, duration: dur,
         emotion: tpl.emotion, emotionLevel: tpl.emotionLevel,
       });
@@ -688,7 +690,7 @@ ${styleTagEn}`;
   const addShot = useCallback((episodeId: string) => {
     setShots(prev => {
       const epShots = prev.filter(s => s.episodeId === episodeId);
-      return [...prev, { id: nanoid(), episodeId, number: epShots.length + 1, type: "定场镜头", size: "全景", movement: "固定", description: "", vo: "", sfx: "", duration: 3, emotion: "平静", emotionLevel: 2 }];
+      return [...prev, { id: nanoid(), episodeId, number: epShots.length + 1, type: "定场镜头", size: "全景", movement: "固定", description: "", vo: "", dialogue: "", sfx: "", duration: 3, emotion: "平静", emotionLevel: 2 }];
     });
   }, []);
 

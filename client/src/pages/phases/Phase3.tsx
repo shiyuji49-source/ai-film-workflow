@@ -189,9 +189,17 @@ function ShotRow({ shot, onUpdate, onRemove }: {
               style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
           </div>
           <div className="col-span-2 space-y-1">
-            <Label className="text-[10px]" style={{ color: "oklch(0.55 0.01 240)" }}>VO / 旁白</Label>
+            <Label className="text-[10px]" style={{ color: "oklch(0.55 0.01 240)" }}>VO / 旁白 / 内心独白</Label>
             <Input value={shot.vo} onChange={e => onUpdate({ vo: e.target.value })}
               className="h-7 text-[10px]"
+              placeholder="VO:或人物VO:开头的旁白或内心独白"
+              style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
+          </div>
+          <div className="col-span-2 space-y-1">
+            <Label className="text-[10px]" style={{ color: "oklch(0.55 0.01 240)" }}>对话 / 台词</Label>
+            <Input value={shot.dialogue || ""} onChange={e => onUpdate({ dialogue: e.target.value })}
+              className="h-7 text-[10px]"
+              placeholder="人物名:“台词内容”"
               style={{ background: "oklch(0.17 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)" }} />
           </div>
           <div className="space-y-1">

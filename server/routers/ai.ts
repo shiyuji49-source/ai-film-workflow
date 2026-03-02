@@ -512,7 +512,11 @@ ${orientationNote}${scriptSection}
 2. 每个镜头时长：2-5秒，高燃场景用短镜头（2-3秒），转场和平静场景用长镜头（4-5秒）
 3. 镜头类型分配：定场镜头(10%) 逻辑镜头(20%) Action镜头(35%) Reaction镜头(25%) 旁跳镜头(10%)
 4. 情绪节奏：开头平静铺垫，中段逐渐升温，高潮点爆发，结尾余韵收尾
-5. 【最重要】旁白（VO）必须直接摘取原剧本中的旁白文字，一字不改、不删减、不增加
+5. 【最重要】原剧本中有三种旁白/对白格式，必须全部识别并一字不改地保留到对应镜头：
+   - 「VO：」 开头 → 旁白（画面外第三方旁白），写入 vo 字段
+   - 「人物名/系统VO：」 开头 → 内心独白（人物内心独白），写入 vo 字段，格式：「[人物名内心独白]」
+   - 「人物名/系统：」 开头 → 对话台词，写入 dialogue 字段，格式：「人物名：“台词内容”」
+   - 同一镜头内可能同时有 vo（旁白）和 dialogue（对话），两者均不得遗漏
 6. 【最重要】台词对白必须严格按照原剧本原文，不得改写、浓缩、添加任何内容
 7. 画面描述（description）可以在原剧本场景基础上补充镜头语言细节（如光效、构图、运动方式），但不得虚构剧情事件
 8. 不得删除、合并、改写原剧本中的任何场景、人物、事件
@@ -535,7 +539,8 @@ ${renderingNote}
       "size": "极远景|远景|全景|中景|中近景|近景|特写",
       "movement": "固定镜头|推镜头|拉镜头|横移|垂直摇|跟拍|环绕|手持抖动|升降镜头|俯冲镜头|航拍运动|稳定器滑轨|变焦推拉|吊臂镜头|滑轨镜头|甩镜头|第一人称镜头",
       "description": "具体的画面内容描述，包含人物动作和场景氛围",
-      "vo": "直接摘取原剧本旁白原文，无则留空",
+      "vo": "旁白或内心独白：直接摘取原剧本中 'VO:' 开头的旁白或 '人物名VO:' 开头的内心独白原文，无则留空",
+      "dialogue": "对话台词：直接摘取原剧本中 '人物名:' 开头的对话原文，格式 '人物名:“台词”'，无则留空",
       "sfx": "音效描述，无则留空",
       "duration": 3,
       "emotion": "情绪关键词",
@@ -549,7 +554,7 @@ ${renderingNote}
       const parsed = JSON.parse(cleaned) as {
         shots: Array<{
           number: number; type: string; size: string; movement: string;
-          description: string; vo: string; sfx: string;
+          description: string; vo: string; dialogue: string; sfx: string;
           duration: number; emotion: string; emotionLevel: number;
         }>;
       };
@@ -566,6 +571,7 @@ ${renderingNote}
         movement: z.string(),
         description: z.string(),
         vo: z.string(),
+        dialogue: z.string().optional(), // 对话台词
         sfx: z.string(),
         duration: z.number(),
         emotion: z.string(),
@@ -615,7 +621,8 @@ ${renderingNote}
       const shotsDesc = shots.map(s =>
         `镜头${s.number}[类型:${s.type} 景别:${s.size} 运动:${s.movement} 时长:${s.duration}s 情绪:${s.emotion}(${s.emotionLevel}/5)]
   画面: ${s.description}
-  VO: ${s.vo || '无'}
+  VO/独白: ${s.vo || '无'}
+  对话: ${s.dialogue || '无'}
   SFX: ${s.sfx || '无'}`
       ).join('\n');
 
@@ -635,7 +642,11 @@ ${GLOBAL_VIDEO_CONSTRAINTS}
 【Seedance提示词规则】
 1. 按镜头顺序描述，每个镜头明确标注景别、运动方式、时长
 2. 画面描述具体生动，包含人物动作、表情、光效、场景氛围
-3. 旁白（VO）和音效（SFX）直接写入提示词，格式：[VO: "旁白内容"] [SFX: 音效描述]
+3. 旁白/对话/独白必须全部保留并写入提示词，一字不改：
+   - VO/独白字段有内容时：格式 [VO: "旁白或内心独白内容"]
+   - 对话字段有内容时：格式 [对话: "人物名：台词内容"]
+   - 音效字段有内容时：格式 [SFX: 音效描述]
+   - 同一镜头内 VO/独白和对话可能同时存在，两者均不得遗漏
 4. 不要出现@符号
 5. 不要引用具体影视作品名称，用风格描述词代替
 6. 提示词全程用中文撰写，不要在提示词中加入英文
