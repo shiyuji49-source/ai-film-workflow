@@ -835,12 +835,53 @@ function EpisodeSection({ episodeId, episodeTitle, type, orientation }: { episod
 
 // ─── Phase2 Main ──────────────────────────────────────────────────────────────
 export default function Phase2() {
-  const { characters, markPhaseComplete, setActivePhase, projectInfo, updateCharacter, scriptAnalysis, episodeAssets } = useProject();
+  const { characters, markPhaseComplete, setActivePhase, projectInfo, updateCharacter, scriptAnalysis, episodeAssets, updateEpisodeAsset } = useProject();
   const [activeTab, setActiveTab] = useState<"character" | "scene" | "prop">("character");
   const [generatingAll, setGeneratingAll] = useState(false);
+  const [generatingAllScenes, setGeneratingAllScenes] = useState(false);
+  const [generatingAllSceneProgress, setGeneratingAllSceneProgress] = useState<{ current: number; total: number; name: string } | null>(null);
   const orientation = projectInfo.orientation || "landscape";
 
   const generateMJMutation = trpc.ai.generateCharacterPrompt.useMutation();
+  const generateSceneMJMutation = trpc.ai.generateAssetPrompt.useMutation();
+
+  // 一键生成本集所有场景提示词（串行）
+  const handleGenerateAllScenes = async () => {
+    const scenes = episodeAssets.filter(a => a.type === "scene");
+    if (scenes.length === 0) { toast.error("没有场景资产，请先完成剧本解析"); return; }
+    setGeneratingAllScenes(true);
+    let successCount = 0;
+    let failCount = 0;
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i];
+      setGeneratingAllSceneProgress({ current: i + 1, total: scenes.length, name: scene.name || "未命名场景" });
+      try {
+        // 找到所属集数的上下文
+        const ep = scriptAnalysis?.episodes?.find(e => e.id === scene.episodeId);
+        const episodeContext = ep ? `第${ep.number}集《${ep.title}》：${ep.synopsis}` : undefined;
+        const result = await generateSceneMJMutation.mutateAsync({
+          type: "scene",
+          name: scene.name || "场景",
+          description: scene.description || scene.name || "场景",
+          episodeContext,
+          styleZh: projectInfo.styleZh,
+          styleEn: projectInfo.styleEn,
+          orientation: (projectInfo.orientation as "landscape" | "portrait" | undefined),
+        });
+        updateEpisodeAsset(scene.id, { promptMJ: JSON.stringify({ zh: result.zh, en: result.en }) });
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    setGeneratingAllScenes(false);
+    setGeneratingAllSceneProgress(null);
+    if (failCount === 0) {
+      toast.success(`全部 ${successCount} 个场景提示词生成完成`);
+    } else {
+      toast.warning(`完成 ${successCount} 个，失败 ${failCount} 个`);
+    }
+  };
 
   const handleGenerateAll = async () => {
     setGeneratingAll(true);
@@ -942,6 +983,33 @@ export default function Phase2() {
             工作流：<span style={{ color: S.amber }}>STEP 1</span> AI 生成 MJ7 提示词 → 复制到 Midjourney →
             <span style={{ color: S.purple }}> STEP 2</span> 上传 MJ 参考图 → 生成单张场景参考图（{orientation === "portrait" ? "9:16 竖版" : "16:9 横版"}）
           </div>
+
+          {/* 一键生成按鈕 + 进度显示 */}
+          {episodes.length > 0 && (
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                {generatingAllSceneProgress && (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" style={{ color: S.teal }} />
+                    <span className="text-xs" style={{ color: S.teal, fontFamily: S.mono }}>
+                      正在生成第 {generatingAllSceneProgress.current}/{generatingAllSceneProgress.total} 个场景：{generatingAllSceneProgress.name}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <Button
+                size="sm"
+                onClick={handleGenerateAllScenes}
+                disabled={generatingAllScenes || totalScenes === 0}
+                style={{ background: "oklch(0.65 0.15 185 / 0.15)", border: "1px solid oklch(0.65 0.15 185 / 0.4)", color: S.teal, flexShrink: 0 }}
+              >
+                {generatingAllScenes
+                  ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中…</>
+                  : <><Wand2 className="w-3 h-3 mr-1" />一键生成全部场景提示词 ({totalScenes})</>}
+              </Button>
+            </div>
+          )}
+
           {episodes.length === 0
             ? <div className="p-8 text-center rounded" style={S.card}><p className="text-sm" style={{ color: S.dim }}>请先在阶段一完成剧本解析，系统将自动提取分集信息</p></div>
             : <div className="space-y-6">{episodes.map(ep => <EpisodeSection key={ep.id} episodeId={ep.id} episodeTitle={ep.title || `第 ${ep.number} 集`} type="scene" orientation={orientation} />)}</div>
