@@ -11,6 +11,55 @@ import {
   GEMINI_THINKING_OFF,
 } from "../../shared/const";
 
+// ─── 风格大类固定提示词映射 ────────────────────────────────────────────────────
+// 每种大风格有严格固定的英文关键词组合，确保生成结果风格一致，不会随机漂移
+const STYLE_FIXED_KEYWORDS: Record<string, { en: string; renderingNote: string }> = {
+  "2D": {
+    en: "2D animation style, hand-drawn illustration, flat color shading, cel shading, clean line art, anime style, 2D cartoon rendering",
+    renderingNote: "【严格要求】这是2D动画风格，英文提示词必须包含上述固定关键词。禁止使用：3D rendering, photorealistic, subsurface scattering, ray tracing, CGI, volumetric lighting等写实3D词汇。",
+  },
+  "3D": {
+    en: "3D CGI animation style, 3D rendered, volumetric lighting, physically based rendering, smooth 3D shading, cinematic 3D animation",
+    renderingNote: "【严格要求】这是3D动画风格，英文提示词必须包含上述固定关键词。禁止使用：hand-drawn, flat color, cel shading, 2D illustration等2D风格词汇。",
+  },
+  "CG": {
+    en: "CG cinematic style, photorealistic CGI, hyper-realistic 3D, cinematic visual effects, VFX quality, game engine render, Unreal Engine cinematic",
+    renderingNote: "【严格要求】这是CG写实风格，英文提示词必须包含上述固定关键词，强调超写实质感和电影级视效。",
+  },
+  "真人": {
+    en: "live action style, photographic realism, cinematic photography, real world setting, film photography, natural lighting, documentary style",
+    renderingNote: "【严格要求】这是真人影视风格，英文提示词必须包含上述固定关键词，强调真实摄影感和电影质感。",
+  },
+};
+
+// 根据 styleZh 或 styleEn 提取风格大类
+function getStyleCategory(styleZh?: string, styleEn?: string): string {
+  if (!styleZh && !styleEn) return "";
+  const combined = `${styleZh || ""} ${styleEn || ""}`;
+  if (combined.includes("2D") || combined.includes("二维")) return "2D";
+  if (combined.includes("3D") || combined.includes("三维")) return "3D";
+  if (combined.includes("CG") || combined.includes("写实")) return "CG";
+  if (combined.includes("真人") || combined.includes("live action")) return "真人";
+  return "";
+}
+
+// 获取固定风格关键词（用于嵌入提示词）
+function getFixedStyleKeywords(styleZh?: string, styleEn?: string): { fixedEn: string; renderingNote: string; category: string } {
+  const category = getStyleCategory(styleZh, styleEn);
+  if (category && STYLE_FIXED_KEYWORDS[category]) {
+    return { fixedEn: STYLE_FIXED_KEYWORDS[category].en, renderingNote: STYLE_FIXED_KEYWORDS[category].renderingNote, category };
+  }
+  return { fixedEn: styleEn || "", renderingNote: "", category: "" };
+}
+
+// ─── 全局视频提示词约束（无背景音乐/无字幕） ──────────────────────────────────
+const GLOBAL_VIDEO_CONSTRAINTS = `
+【全局约束（所有镜头必须遵守）】
+- 全程无背景音乐（no background music, no BGM, no soundtrack）
+- 画面内容无字幕（no subtitles, no text overlay, no captions, no on-screen text）
+- 旁白（VO）仅作为画外音，不在画面中显示文字
+`;
+
 // Gemini API helper --------------------------------------------------------
 
 async function callGemini(
@@ -23,13 +72,8 @@ async function callGemini(
   if (!apiKey) throw new Error("GEMINI_API_KEY 未配置");
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  // Gemini 3 系列 thinkingBudget 规则：
-  // - OFF：不传 thinkingConfig，让模型自动决定（感性创作最佳）
-  // - LOW：1024（最小有效值，适合结构化输出）
-  // - HIGH：-1（最大思考深度，适合复杂逻辑推理）
-  // 注意：Gemini 3.1 Pro 不支持 thinkingBudget: 0，会返回 400 错误
   const thinkingConfig = thinkingLevel === GEMINI_THINKING_OFF
-    ? undefined  // 不传此字段，让模型自动决定
+    ? undefined
     : { thinkingBudget: thinkingLevel === GEMINI_THINKING_LOW ? 1024 : -1 };
 
   const body = {
@@ -61,12 +105,11 @@ async function callGemini(
 
   const candidate = data.candidates?.[0];
   const finishReason = candidate?.finishReason;
-  // MAX_TOKENS means output was cut off — the JSON will be incomplete
   if (finishReason === "MAX_TOKENS") {
     throw new Error("AI 输出超出长度限制，请减少单次生成的镜头数量（建议每集时长不超过 5 分钟）");
   }
 
-   const text = candidate?.content?.parts?.[0]?.text ?? "";
+  const text = candidate?.content?.parts?.[0]?.text ?? "";
   return text;
 }
 
@@ -121,7 +164,7 @@ export const aiRouter = router({
 4. 道具识别（按集）：
    - 每集提取重要道具：名称、外观描述、材质、用途
    - 道具范围包括：实体道具（武器、容器、工具等）和虚拟/界面类道具（系统面板、全息屏幕、数据界面、控制台、屏幕显示器、头盔显示屏等）
-   - 对于界面类道具，材质写“虚拟光效”或“全息投影”，用途写具体功能（如显示战斗数据、导航界面等）
+   - 对于界面类道具，材质写"虚拟光效"或"全息投影"，用途写具体功能（如显示战斗数据、导航界面等）
 
 【剧本内容】
 ${input.scriptText.slice(0, 80000)}
@@ -168,7 +211,6 @@ ${input.scriptText.slice(0, 80000)}
 }`;
 
       const raw = await callGeminiProCreative(prompt, 65536);
-      // 清理 markdown 代码块
       const cleaned = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
       const parsed = JSON.parse(cleaned) as {
         episodes: Array<{
@@ -200,11 +242,10 @@ ${input.scriptText.slice(0, 80000)}
     .mutation(async ({ input }) => {
       const { name, isMecha, isQVersion, appearance, costume, marks, styleZh, styleEn } = input;
 
-      // 根据风格大类判断渲染方式要求
-      const is2D = styleZh?.includes("2D") || styleEn?.includes("2D") || styleEn?.includes("hand-drawn") || styleEn?.includes("anime") || styleEn?.includes("cel");
-      const styleEnStr = styleEn ? `\n- 风格关键词（必须在英文提示词中包含）：${styleEn}` : "";
-      const renderingNote = is2D
-        ? "- 注意：这是2D动画风格，英文提示词必须体现手绘线条、平途上色或赛璐璐上色等典型2D动画特征，不得使用写实3D渲染、照片级真实感、次表面散射等写实渲染词汇"
+      // 获取固定风格关键词（严格固定，不允许 AI 自由发挥风格）
+      const { fixedEn: fixedStyleEn, renderingNote, category } = getFixedStyleKeywords(styleZh, styleEn);
+      const styleEnStr = fixedStyleEn
+        ? `\n- 【固定风格关键词，必须原样嵌入英文提示词中，不得修改或替换】：${fixedStyleEn}`
         : "";
 
       const prompt = isMecha
@@ -215,7 +256,7 @@ ${input.scriptText.slice(0, 80000)}
 外观特征：${appearance}
 装甲/外壳：${costume}
 特殊标记：${marks || "无"}
-整体风格：${styleZh || "科幻机甲风格"}
+整体风格：${styleZh || "科幻机甲风格"}（风格大类：${category || "未指定"}）
 
 【MJ7提示词要求】
 - 生成一张竖版（2:3比例）的机甲全身参考图
@@ -240,7 +281,7 @@ ${renderingNote}
 外貌特征：${appearance}
 服装描述：${costume}
 特殊标记：${marks || "无"}
-整体风格：${styleZh || ""}
+整体风格：${styleZh || ""}（风格大类：${category || "未指定"}）
 
 【MJ7提示词要求】
 - 生成一张竖版（2:3比例）的人物全身形象参考图
@@ -263,7 +304,6 @@ ${renderingNote}
       let qVersionZh = "";
       let qVersionEn = "";
       if (isQVersion && !isMecha) {
-        const styleEnStr2 = styleEn ? `\n- 风格关键词（必须在英文提示词中包含）：${styleEn}` : "";
         const qPrompt = `你是专业的AI影片制作提示词工程师。请为以下角色生成一张用于 Midjourney 7（MJ7）的 Q 版形象参考图提示词。
 
 【角色信息】
@@ -271,7 +311,7 @@ ${renderingNote}
 外貌特征：${appearance}
 服装描述：${costume}
 特殊标记：${marks || "无"}
-整体风格：${styleZh || ""}
+整体风格：${styleZh || ""}（风格大类：${category || "未指定"}）
 
 【MJ7提示词要求】
 - 生成一张竖版（2:3比例）的 Q 版全身形象参考图
@@ -279,9 +319,10 @@ ${renderingNote}
 - 保持角色的服装颜色、发型、标志性特征与正常形象一致
 - 纯白色背景，工作室光线
 - 中文提示词：详细描述 Q 版形象的大头小身风格、服装、表情
-- 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr2}
+- 英文提示词：对应的英文版本，用于直接输入MJ7${fixedStyleEn ? `\n- 【固定风格关键词，必须原样嵌入】：${fixedStyleEn}` : ""}
 - 英文提示词末尾加上：--ar 2:3 --style raw --q 2
 - 不要出现@符号，不要引用具体作品名称
+${renderingNote}
 
 请严格输出以下输出格式：
 {
@@ -314,41 +355,50 @@ ${renderingNote}
       episodeContext: z.string().optional(),
       styleZh: z.string().optional(),
       styleEn: z.string().optional(),
+      orientation: z.enum(["landscape", "portrait"]).optional(), // 画幅方向
     }))
     .mutation(async ({ input }) => {
-      const { type, name, description, episodeContext, styleZh, styleEn } = input;
+      const { type, name, description, episodeContext, styleZh, styleEn, orientation } = input;
 
       const isScene = type === "scene";
-      // 根据风格大类判断渲染方式要求
-      const is2D = styleZh?.includes("2D") || styleEn?.includes("2D") || styleEn?.includes("hand-drawn") || styleEn?.includes("anime") || styleEn?.includes("cel");
-      const styleEnStr = styleEn ? `\n- 风格关键词（必须在英文提示词中包含）：${styleEn}` : "";
-      const renderingNote = is2D
-        ? "- 注意：这是2D动画风格，英文提示词必须体现手绘背景、平途色块、动画色调等典型2D动画场景特征，不得使用照片级真实感、全局光照、物理渲染等写实渲染词汇"
+      const isPortrait = orientation === "portrait";
+
+      // 根据画幅确定比例
+      const aspectRatio = isPortrait ? "9:16" : "16:9";
+      const compositionNote = isPortrait
+        ? "竖版（9:16比例）构图，纵向空间感，适合竖屏播放"
+        : "横版（16:9比例）构图，宽画幅电影感，适合横屏播放";
+
+      // 获取固定风格关键词
+      const { fixedEn: fixedStyleEn, renderingNote, category } = getFixedStyleKeywords(styleZh, styleEn);
+      const styleEnStr = fixedStyleEn
+        ? `\n- 【固定风格关键词，必须原样嵌入英文提示词中，不得修改或替换】：${fixedStyleEn}`
         : "";
 
       const prompt = isScene
-        ? `你是专业的AI影片制作提示词工程师。请为以下场景生成用于 Midjourney 7（MJ7）的多角度场景参考图提示词。
+        ? `你是专业的AI影片制作提示词工程师。请为以下场景生成用于 Midjourney 7（MJ7）的场景参考图提示词。
 
 【场景信息】
 场景名称：${name}
 场景描述：${description}
 所在集数背景：${episodeContext || ""}
-整体风格：${styleZh || ""}
+整体风格：${styleZh || ""}（风格大类：${category || "未指定"}）
+画幅方向：${compositionNote}
 
 【MJ7提示词要求】
-- 生成一张横版（16:9比例）的场景环境参考图
+- 生成一张${compositionNote}的场景环境参考图
 - 展现场景的空间感、氛围、光线、材质
 - 无人物，纯场景环境
 - 中文提示词：详细描述场景的视觉元素、光影、氛围、色调
 - 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr}
-- 英文提示词末尾加上：--ar 16:9 --style raw --q 2
+- 英文提示词末尾加上：--ar ${aspectRatio} --style raw --q 2
 - 不要出现@符号，不要引用具体作品名称
 ${renderingNote}
 
 请严格输出以下输出格式：
 {
   "zh": "中文提示词内容",
-  "en": "English prompt content --ar 16:9 --style raw --q 2"
+  "en": "English prompt content --ar ${aspectRatio} --style raw --q 2"
 }`
         : `你是专业的AI影片制作提示词工程师。请为以下道具生成用于 Midjourney 7（MJ7）的道具展示图提示词。
 
@@ -356,22 +406,23 @@ ${renderingNote}
 道具名称：${name}
 道具描述：${description}
 所在集数背景：${episodeContext || ""}
-整体风格：${styleZh || ""}
+整体风格：${styleZh || ""}（风格大类：${category || "未指定"}）
+画幅方向：${compositionNote}
 
 【MJ7提示词要求】
-- 生成一张方形（1:1比例）的道具展示图
+- 生成一张${compositionNote}的道具展示图
 - 纯黑色或深色背景，产品展示风格
 - 清晰展示道具的外观、材质、细节
 - 中文提示词：详细描述道具的外观、材质、光泽、特殊效果
 - 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr}
-- 英文提示词末尾加上：--ar 1:1 --style raw --q 2
+- 英文提示词末尾加上：--ar ${aspectRatio} --style raw --q 2
 - 不要出现@符号，不要引用具体作品名称
 ${renderingNote}
 
 请严格输出以下输出格式：
 {
   "zh": "中文提示词内容",
-  "en": "English prompt content --ar 1:1 --style raw --q 2"
+  "en": "English prompt content --ar ${aspectRatio} --style raw --q 2"
 }`;
 
       const raw = await callGeminiProCreative(prompt);
@@ -390,21 +441,55 @@ ${renderingNote}
       scenes: z.array(z.string()),
       characters: z.array(z.string()),
       styleZh: z.string().optional(),
+      styleEn: z.string().optional(),
+      orientation: z.enum(["landscape", "portrait"]).optional(),
+      market: z.string().optional(), // 目标市场
       episodeScript: z.string().optional(), // 当集原剧本文本
     }))
-    .mutation(async ({ input, ctx }) => {      const targetShots = Math.min(Math.round(input.durationMinutes * 25), 60);
-      // 登录用户按镜头数扣积分（每镜头 1 积分）
-      if (ctx.user) {
-        if (ctx.user.credits < targetShots) {
-          throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成 ${targetShots} 个分镜需要 ${targetShots} 积分（当前 ${ctx.user.credits}）` });
-        }
-        await db.deductCredits(ctx.user.id, targetShots, "generate_shot", undefined, `AI 生成 ${targetShots} 个分镜`);
-      }
-      const { episodeTitle, episodeNumber, episodeSynopsis, durationMinutes, scenes, characters, styleZh, episodeScript } = input;
+    .mutation(async ({ input, ctx }) => {
+      // 分镜数量：大概范围，不严格限制，避免为凑数杜撰镜头
+      // 参考值：每分钟约15-25个镜头，但以剧本内容为准
+      const minShots = Math.round(input.durationMinutes * 12);
+      const maxShots = Math.round(input.durationMinutes * 28);
+      const refShots = Math.round(input.durationMinutes * 20);
+      const creditCost = Math.min(refShots, 60);
 
-      // 如果有原剧本文本，截取到合理长度（避免超出输入 token 限制）
+      // 登录用户按参考镜头数扣积分
+      if (ctx.user) {
+        if (ctx.user.credits < creditCost) {
+          throw new TRPCError({ code: "FORBIDDEN", message: `积分不足，生成分镜需要约 ${creditCost} 积分（当前 ${ctx.user.credits}）` });
+        }
+        await db.deductCredits(ctx.user.id, creditCost, "generate_shot", undefined, `AI 生成分镜（约${refShots}个）`);
+      }
+
+      const { episodeTitle, episodeNumber, episodeSynopsis, durationMinutes, scenes, characters, styleZh, styleEn, orientation, market, episodeScript } = input;
+
+      // 根据市场确定配音语言
+      const marketLangMap: Record<string, string> = {
+        "中国": "普通话配音/旁白",
+        "美国": "English dubbing/narration (English voiceover)",
+        "日本": "Japanese dubbing/narration (日本語吹き替え)",
+        "印度": "Hindi dubbing/narration",
+        "俄罗斯": "Russian dubbing/narration (русская озвучка)",
+        "韩国": "Korean dubbing/narration (한국어 더빙)",
+        "法国": "French dubbing/narration",
+        "德国": "German dubbing/narration",
+        "西班牙": "Spanish dubbing/narration",
+        "巴西": "Portuguese dubbing/narration",
+      };
+      const voLang = market ? (marketLangMap[market] || `${market}语配音/旁白`) : "普通话配音/旁白";
+
+      // 获取固定风格关键词
+      const { fixedEn: fixedStyleEn, renderingNote, category } = getFixedStyleKeywords(styleZh, styleEn);
+
+      // 画幅视听语言方案
+      const isPortrait = orientation === "portrait";
+      const orientationNote = isPortrait
+        ? "【竖屏视听语言】画幅9:16竖版，优先使用：特写/近景（展示面部情绪）、垂直运镜（上下移动）、中心构图、人物占满画幅高度，避免大远景和横向宽画幅构图"
+        : "【横屏视听语言】画幅16:9横版，优先使用：宽画幅构图、横向运镜（左右移动）、双人/群像镜头、大远景展示环境，充分利用横向空间";
+
       const scriptSection = episodeScript
-        ? `\n\n【原剧本内容（必须严格遵循）】\n${episodeScript.slice(0, 40000)}`
+        ? `\n\n【原剧本内容（必须严格遵循，禁止添加原剧本没有的内容）】\n${episodeScript.slice(0, 40000)}`
         : "";
 
       const prompt = `你是专业的影视导演和分镜师。请根据以下剧本信息，为第${episodeNumber}集生成分镜表。
@@ -415,16 +500,21 @@ ${renderingNote}
 单集时长：${durationMinutes}分钟
 主要场景：${scenes.join('、')}
 出场人物：${characters.join('、')}
-整体风格：${styleZh || '3D科幻机甲国漫风格'}${scriptSection}
+整体风格：${styleZh || ''}（风格大类：${category || "未指定"}，固定关键词：${fixedStyleEn || "无"}）
+目标市场：${market || "中国"}（配音语言：${voLang}）
+${orientationNote}${scriptSection}
 
 【分镜生成规则】
-1. 总镜头数：${targetShots}个
-2. 每个镜头时长：2-5科，高燃场景用短镜头（2-3科），转场和平静场景用长镜头（4-5科）
+1. 镜头数量参考范围：约${minShots}~${maxShots}个（参考值${refShots}个）
+   - 【重要】不要为了凑够镜头数量而杜撰剧情，镜头数量以完整呈现原剧本内容为准
+   - 如果原剧本内容较少，可以少于参考范围；如果内容丰富，可以适当超出
+   - 禁止凭空添加原剧本中没有的场景、人物、事件、对白
+2. 每个镜头时长：2-5秒，高燃场景用短镜头（2-3秒），转场和平静场景用长镜头（4-5秒）
 3. 镜头类型分配：定场镜头(10%) 逻辑镜头(20%) Action镜头(35%) Reaction镜头(25%) 旁跳镜头(10%)
 4. 情绪节奏：开头平静铺垫，中段逐渐升温，高潮点爆发，结尾余韵收尾
 5. 【最重要】旁白（VO）必须直接摘取原剧本中的旁白文字，一字不改、不删减、不增加
 6. 【最重要】台词对白必须严格按照原剧本原文，不得改写、浓缩、添加任何内容
-7. 画面描述（description）可以在原剧本场景基础上补充镜头语言细节（如光效、构图、运动方式），但不得虞构剧情事件
+7. 画面描述（description）可以在原剧本场景基础上补充镜头语言细节（如光效、构图、运动方式），但不得虚构剧情事件
 8. 不得删除、合并、改写原剧本中的任何场景、人物、事件
 9. 每个动作镜头应有具体的音效描述（SFX）
 10. 【时间操控镜头】如剧本中有明确指示，必须使用对应镜头类型：
@@ -434,6 +524,7 @@ ${renderingNote}
     - 快镜头：加速播放，适用于紧迫准备过程、喜剧段落
     - 逆向镜头：画面倒放，适用于记忆回溯、梦境序列
 11. 【视角镜头】根据叙事需要合理使用：航拍镜头（宏大场景）、俯视镜头（孤立感）、仰视镜头（威严登场）、荷兰角（心理扭曲）
+${renderingNote}
 
 请严格输出以下 JSON格式，不要有任何额外说明：
 {
@@ -483,6 +574,8 @@ ${renderingNote}
       totalDuration: z.number(),
       styleZh: z.string().optional(),
       styleEn: z.string().optional(),
+      orientation: z.enum(["landscape", "portrait"]).optional(),
+      market: z.string().optional(),
       episodeContext: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -493,7 +586,31 @@ ${renderingNote}
         }
         await db.deductCredits(ctx.user.id, 3, "generate_prompt", undefined, "AI 生成 Seedance 视频提示词");
       }
-      const { shots, totalDuration, styleZh, styleEn, episodeContext } = input;
+      const { shots, totalDuration, styleZh, styleEn, orientation, market, episodeContext } = input;
+
+      // 获取固定风格关键词
+      const { fixedEn: fixedStyleEn, renderingNote, category } = getFixedStyleKeywords(styleZh, styleEn);
+
+      // 画幅视听语言方案
+      const isPortrait = orientation === "portrait";
+      const orientationPromptNote = isPortrait
+        ? "【竖屏9:16】所有镜头描述必须体现竖版构图：人物居中、特写优先、垂直运镜、纵向空间感"
+        : "【横屏16:9】所有镜头描述必须体现横版构图：宽画幅、横向运镜、场景环境充分展示";
+
+      // 根据市场确定配音语言
+      const marketLangMap: Record<string, string> = {
+        "中国": "普通话",
+        "美国": "English",
+        "日本": "日本語",
+        "印度": "Hindi",
+        "俄罗斯": "русский",
+        "韩国": "한국어",
+        "法国": "Français",
+        "德国": "Deutsch",
+        "西班牙": "Español",
+        "巴西": "Português",
+      };
+      const voLang = market ? (marketLangMap[market] || market) : "普通话";
 
       const shotsDesc = shots.map(s =>
         `镜头${s.number}[类型:${s.type} 景别:${s.size} 运动:${s.movement} 时长:${s.duration}s 情绪:${s.emotion}(${s.emotionLevel}/5)]
@@ -509,8 +626,11 @@ ${shotsDesc}
 
 【视频规格】
 - 片段时长：${totalDuration}秒（${shots.length}个镜头）
-- 整体风格：${styleZh || '3D科幻机甲国漫风格'}
+- 整体风格：${styleZh || ''}（风格大类：${category || "未指定"}，固定关键词：${fixedStyleEn || "无"}）
 - 剧情背景：${episodeContext || ''}
+- 目标市场：${market || "中国"}（旁白语言：${voLang}）
+${orientationPromptNote}
+${GLOBAL_VIDEO_CONSTRAINTS}
 
 【Seedance提示词规则】
 1. 按镜头顺序描述，每个镜头明确标注景别、运动方式、时长
@@ -520,21 +640,23 @@ ${shotsDesc}
 5. 不要引用具体影视作品名称，用风格描述词代替
 6. 提示词全程用中文撰写，不要在提示词中加入英文
 7. 整体语调要具有电影感和沉浸感
-8. 【时间操控镜头必须明确标注】
-   - 慢镜头：写明“慢动作”“慢动作特写”“子弹时间拉伸”等，并标注播放速度（如“1/4速”）
-   - 超慢镜头：写明“超高速摄影慢播”“1/8速慢动作”，强调光影粒子细节
-   - 延时镜头：写明“延时摄影”“时间加速流逝”，描述快速变化的天空、人流、光线
-   - 定格镜头：写明“画面定格”“动作冻结”，描述定格瞬间的构图与情绪
-   - 逆向镜头：写明“画面倒放”“时间倒流”，描述倒连的动作或场景
-9. 【特殊运镜必须说明】
-   - 变焦推拉：写明“镜头推进同时背景向后拉伸”，强调心理震撼效果
-   - 甩镜头：写明“极速横移转场”，画面模糊带入下一场景
-   - 航拍运动：写明“无人机俯瞰”“高空俯瞰”，展示地理全貌
+8. 【全程无背景音乐，画面内容无字幕】——这是硬性要求，必须在提示词中明确标注
+9. 【禁止添加原剧本没有的内容】——所有画面描述必须基于分镜信息，不得凭空添加场景、人物、事件
+10. 【时间操控镜头必须明确标注】
+   - 慢镜头：写明"慢动作""慢动作特写""子弹时间拉伸"等，并标注播放速度（如"1/4速"）
+   - 超慢镜头：写明"超高速摄影慢播""1/8速慢动作"，强调光影粒子细节
+   - 延时镜头：写明"延时摄影""时间加速流逝"，描述快速变化的天空、人流、光线
+   - 定格镜头：写明"画面定格""动作冻结"，描述定格瞬间的构图与情绪
+   - 逆向镜头：写明"画面倒放""时间倒流"，描述倒连的动作或场景
+11. 【特殊运镜必须说明】
+   - 变焦推拉：写明"镜头推进同时背景向后拉伸"，强调心理震撼效果
+   - 甩镜头：写明"极速横移转场"，画面模糊带入下一场景
+   - 航拍运动：写明"无人机俯瞰""高空俯瞰"，展示地理全貌
+${renderingNote}
 
 请直接输出提示词文本，不要有任何额外说明或JSON包裹。`;
 
       const raw = await callGeminiPro(prompt);
-      // 清理可能的markdown代码块
       const cleaned = raw.replace(/^```[\w]*\s*/m, "").replace(/```\s*$/m, "").trim();
       return { prompt: cleaned };
     }),

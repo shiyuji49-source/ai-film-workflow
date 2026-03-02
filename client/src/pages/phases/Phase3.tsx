@@ -318,6 +318,9 @@ export default function Phase3() {
         scenes: activeEp.scenes as string[],
         characters: characters.map(c => c.name),
         styleZh: projectInfo.styleZh || projectInfo.styleCategory || "3D科幻机甲国漫风格",
+        styleEn: projectInfo.styleEn || undefined,
+        orientation: (projectInfo.orientation as "landscape" | "portrait" | undefined),
+        market: projectInfo.market || undefined,
         episodeScript: episodeScript || undefined,
       });
       addShotsFromAI(activeEpTab, result.shots);

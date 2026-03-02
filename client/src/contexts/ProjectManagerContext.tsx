@@ -58,6 +58,7 @@ function defaultProjectInfo(): ProjectInfo {
     title: "", type: "", episodes: "", platform: "", ratio: "9:16 竖屏",
     audience: "", selling: "", styleZh: "", styleEn: "",
     styleCategory: "", styleSubtype: "",
+    market: "中国", orientation: "portrait",
   };
 }
 
@@ -80,6 +81,8 @@ function migrateSnapshot(raw: Record<string, unknown>): ProjectSnapshot {
     styleEn: (rawInfo.styleEn as string) ?? defaultInfo.styleEn,
     styleCategory: (rawInfo.styleCategory as string) ?? defaultInfo.styleCategory,
     styleSubtype: (rawInfo.styleSubtype as string) ?? defaultInfo.styleSubtype,
+    market: (rawInfo.market as string) ?? defaultInfo.market,
+    orientation: (rawInfo.orientation as string) ?? defaultInfo.orientation,
   };
   const characters = ((raw.characters as Record<string, unknown>[]) || []).map(c => ({
     id: (c.id as string) || "",

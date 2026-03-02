@@ -17,6 +17,8 @@ export interface ProjectInfo {
   styleEn: string;
   styleCategory: string;  // 大类 ID: "2D" | "3D" | "CG" | "live"
   styleSubtype: string;   // 小类 ID，可为空
+  market: string;         // 目标市场："中国" | "美国" | "日本" | "印度" | "俄罗斯" 等
+  orientation: string;    // 画幅方向："landscape" | "portrait"
 }
 
 export interface Episode {
@@ -431,7 +433,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
   // Local state mirrors the active snapshot; syncs to manager on every change
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>(
-    activeSnap?.projectInfo ?? { title: "", type: "", episodes: "", platform: "", ratio: "9:16 竖屏", audience: "", selling: "", styleZh: "", styleEn: "", styleCategory: "", styleSubtype: "" }
+    activeSnap?.projectInfo ?? { title: "", type: "", episodes: "", platform: "", ratio: "9:16 竖屏", audience: "", selling: "", styleZh: "", styleEn: "", styleCategory: "", styleSubtype: "", market: "中国", orientation: "portrait" }
   );
   const [scriptText, setScriptTextState] = useState(activeSnap?.scriptText ?? "");
   const [scriptAnalysis, setScriptAnalysis] = useState<ScriptAnalysis>(

@@ -218,6 +218,7 @@ export const assetsRouter = router({
       frontUrl: z.string().url(),
       sideUrl: z.string().url(),
       backUrl: z.string().url(),
+      charName: z.string().optional(), // 角色名，用于底部水印标注
     }))
     .mutation(async ({ ctx, input }) => {
       const asset = await getAssetById(input.id, ctx.user.id);
@@ -276,27 +277,63 @@ export const assetsRouter = router({
 
         // 强制输出真正16:9比例：以实际宽度计算目标高度，不足则上下填白边
         const targetW16x9 = totalW;
+        // 底部水印条高度（约4%的高度，最小40px）
+        const watermarkBarH = Math.max(40, Math.round(totalW * 9 / 16 * 0.045));
+        // 16:9 总高度 = 图片区域高度 + 水印条高度
+        const imgAreaH = Math.round(totalW * 9 / 16) - watermarkBarH;
         const targetH16x9 = Math.round(totalW * 9 / 16);
-        let merged: Buffer;
-        if (targetH16x9 === targetH) {
-          merged = stitched;
-        } else if (targetH16x9 > targetH) {
+        let imgArea: Buffer;
+        if (imgAreaH === targetH) {
+          imgArea = stitched;
+        } else if (imgAreaH > targetH) {
           // 高度不够，上下填白边
-          const topPad = Math.floor((targetH16x9 - targetH) / 2);
-          merged = await sharp({
-            create: { width: targetW16x9, height: targetH16x9, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+          const topPad = Math.floor((imgAreaH - targetH) / 2);
+          imgArea = await sharp({
+            create: { width: targetW16x9, height: imgAreaH, channels: 4, background: { r: 20, g: 20, b: 30, alpha: 1 } },
           })
             .composite([{ input: stitched, left: 0, top: topPad }])
             .png()
             .toBuffer();
         } else {
           // 高度过够，中心裁剪
-          const cropTop = Math.floor((targetH - targetH16x9) / 2);
-          merged = await sharp(stitched)
-            .extract({ left: 0, top: cropTop, width: targetW16x9, height: targetH16x9 })
+          const cropTop = Math.floor((targetH - imgAreaH) / 2);
+          imgArea = await sharp(stitched)
+            .extract({ left: 0, top: cropTop, width: targetW16x9, height: imgAreaH })
             .png()
             .toBuffer();
         }
+
+        // 生成底部水印条：深色背景 + 角色名 + 4个视角标签
+        const charNameText = input.charName || asset.name || "角色";
+        const viewLabels = ["近景肖像", "正视全身", "侧视全身", "背视全身"];
+        const fontSize = Math.max(16, Math.round(watermarkBarH * 0.45));
+        const labelFontSize = Math.max(12, Math.round(watermarkBarH * 0.32));
+        const singleW = Math.round(totalW / 4);
+
+        // 构建 SVG 水印条
+        const svgLabels = viewLabels.map((label, i) => {
+          const cx = Math.round(singleW * i + singleW / 2);
+          return `<text x="${cx}" y="${Math.round(watermarkBarH * 0.72)}" font-family="Arial, sans-serif" font-size="${labelFontSize}" fill="rgba(180,180,200,0.85)" text-anchor="middle">${label}</text>`;
+        }).join("");
+
+        const watermarkSvg = Buffer.from(`<svg width="${targetW16x9}" height="${watermarkBarH}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="${targetW16x9}" height="${watermarkBarH}" fill="rgba(12,12,20,0.95)"/>
+  <line x1="0" y1="0" x2="${targetW16x9}" y2="0" stroke="rgba(100,100,160,0.4)" stroke-width="1"/>
+  <text x="${Math.round(targetW16x9 / 2)}" y="${Math.round(watermarkBarH * 0.55)}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="rgba(220,220,255,0.95)" text-anchor="middle">${charNameText} — 角色全视角设计图</text>
+  ${svgLabels}
+  ${viewLabels.map((_, i) => i > 0 ? `<line x1="${singleW * i}" y1="4" x2="${singleW * i}" y2="${watermarkBarH - 4}" stroke="rgba(80,80,120,0.4)" stroke-width="1"/>` : "").join("")}
+</svg>`);
+
+        // 合并图片区域 + 水印条
+        const merged = await sharp({
+          create: { width: targetW16x9, height: targetH16x9, channels: 4, background: { r: 12, g: 12, b: 20, alpha: 1 } },
+        })
+          .composite([
+            { input: imgArea, left: 0, top: 0 },
+            { input: watermarkSvg, left: 0, top: imgAreaH },
+          ])
+          .png()
+          .toBuffer();
 
         const fileKey = `assets/${ctx.user.id}/${input.id}-chardesign-merged-${nanoid(8)}.png`;
         const { url: s3Url } = await storagePut(fileKey, merged, "image/png");

@@ -102,6 +102,8 @@ export default function Phase4() {
         totalDuration: seg.duration,
         styleZh,
         styleEn,
+        orientation: (projectInfo.orientation as "landscape" | "portrait" | undefined),
+        market: projectInfo.market || undefined,
         episodeContext: ep ? `第${ep.number}集《${ep.title}》：${ep.synopsis}` : "",
       });
       updateVideoSegment(segId, { prompt: result.prompt });
@@ -154,6 +156,8 @@ export default function Phase4() {
           totalDuration: seg.duration,
           styleZh,
           styleEn,
+          orientation: (projectInfo.orientation as "landscape" | "portrait" | undefined),
+          market: projectInfo.market || undefined,
           episodeContext: ep ? `第${ep.number}集《${ep.title}》：${ep.synopsis}` : "",
         });
         updateVideoSegment(seg.id, { prompt: result.prompt });

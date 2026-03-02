@@ -271,9 +271,7 @@ export const SHOT_TYPES: ShotType[] = [
 
 export const WORKFLOW_STEPS = [
   { id: "phase1", number: "01", title: "项目定义", subtitle: "剧本上传与解析", icon: "FileText" },
-  { id: "phase2", number: "02", title: "人物资产", subtitle: "角色设计主图与三视图", icon: "Users" },
-  { id: "phase2b", number: "02B", title: "场景资产", subtitle: "场景多视角图生成", icon: "MapPin" },
-  { id: "phase2c", number: "02C", title: "道具资产", subtitle: "道具三视图生成", icon: "Package" },
+  { id: "phase2", number: "02", title: "资产设计", subtitle: "人物 / 场景 / 道具", icon: "Layers" },
   { id: "phase3", number: "03", title: "分镜设计", subtitle: "AI 自动分镜生成", icon: "Film" },
   { id: "phase4", number: "04", title: "提示词撰写", subtitle: "Seedance 中文提示词", icon: "Wand2" },
   { id: "phase5", number: "05", title: "生成与后期", subtitle: "工具链操作指南", icon: "Play" },
