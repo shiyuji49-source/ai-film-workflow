@@ -37,6 +37,22 @@ export default function Sidebar({ onBackToDashboard }: SidebarProps) {
           </div>
         </div>
 
+        {/* Current project name */}
+        {projectInfo.title && (
+          <div className="mb-2 px-2.5 py-1.5 rounded"
+            style={{ background: "oklch(0.16 0.006 240)", border: "1px solid oklch(0.22 0.006 240)" }}>
+            <p className="text-[9px] tracking-widest uppercase mb-0.5"
+              style={{ color: "oklch(0.45 0.008 240)", fontFamily: "'JetBrains Mono', monospace" }}>
+              当前项目
+            </p>
+            <p className="text-xs font-medium truncate"
+              style={{ color: "oklch(0.88 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}
+              title={projectInfo.title}>
+              {projectInfo.title}
+            </p>
+          </div>
+        )}
+
         {/* Back to dashboard button */}
         <button
           onClick={onBackToDashboard}

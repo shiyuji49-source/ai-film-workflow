@@ -41,6 +41,53 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+
+  // ── Image download proxy (bypasses CORS for S3 assets) ──────────────────────
+  app.get("/api/download-proxy", async (req, res) => {
+    const url = req.query.url as string;
+    const filename = (req.query.filename as string) || "download.png";
+    if (!url || typeof url !== "string") {
+      res.status(400).json({ error: "Missing url parameter" });
+      return;
+    }
+    // Only allow proxying our own S3 assets (security guard)
+    const allowedHosts = [
+      "cloudfront.net",
+      "amazonaws.com",
+      "manus.space",
+      "d2xsxph8kpxj0f.cloudfront.net",
+    ];
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      res.status(400).json({ error: "Invalid URL" });
+      return;
+    }
+    const isAllowed = allowedHosts.some(h => parsedUrl.hostname.endsWith(h));
+    if (!isAllowed) {
+      res.status(403).json({ error: "URL not allowed" });
+      return;
+    }
+    try {
+      const upstream = await fetch(url);
+      if (!upstream.ok) {
+        res.status(upstream.status).json({ error: "Upstream fetch failed" });
+        return;
+      }
+      const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+      const safeFilename = encodeURIComponent(filename);
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${safeFilename}`);
+      res.setHeader("Cache-Control", "no-cache");
+      // Stream the response
+      const arrayBuffer = await upstream.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (err) {
+      console.error("[download-proxy] Error:", err);
+      res.status(500).json({ error: "Proxy download failed" });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

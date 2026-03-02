@@ -342,7 +342,9 @@ export default function AssetsPage() {
         const batch = allImages.slice(i, i + BATCH);
         await Promise.all(batch.map(async ({ url, filename }) => {
           try {
-            const resp = await fetch(url);
+            // 使用后端代理接口绕过 CORS
+            const proxyUrl = `/api/download-proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+            const resp = await fetch(proxyUrl);
             if (!resp.ok) return;
             const blob = await resp.blob();
             zip.file(filename, blob);
