@@ -360,7 +360,6 @@ ${renderingNote}
     .mutation(async ({ input }) => {
       const { type, name, description, episodeContext, styleZh, styleEn, orientation } = input;
 
-      const isScene = type === "scene" || type === "scene_quad";
       const isPortrait = orientation === "portrait";
 
       // 根据画幅确定比例
@@ -375,8 +374,33 @@ ${renderingNote}
         ? `\n- 【固定风格关键词，必须原样嵌入英文提示词中，不得修改或替换】：${fixedStyleEn}`
         : "";
 
-      // ─── 场景四宫格四方向视图提示词模板 ────────────────────────────────────────
-      // 根据画幅确定四宫格布局说明
+      // ─── 普通场景 MJ7 提示词（STEP 1 用，展示给用户，用于 MJ 生成参考图）────────
+      const scenePrompt = `你是专业的AI影片制作提示词工程师。请为以下场景生成用于 Midjourney 7（MJ7）的场景参考图提示词。
+
+【场景信息】
+场景名称：${name}
+场景描述：${description}
+所在集数背景：${episodeContext || ""}
+整体风格：${styleZh || ""}（风格大类：${category || "未指定"}）
+画幅方向：${compositionNote}
+
+【MJ7提示词要求】
+- 生成一张${compositionNote}的场景参考图
+- 展示场景的整体环境、氛围、光线、色调
+- 无人物，专注于场景本身的视觉表现
+- 中文提示词：详细描述场景的环境、光线、色调、氛围、视觉特征
+- 英文提示词：对应的英文版本，用于直接输入MJ7${styleEnStr}
+- 英文提示词末尾加上：--ar ${aspectRatio} --style raw --q 2
+- 不要出现@符号，不要引用具体作品名称
+${renderingNote}
+
+请严格输出以下JSON格式：
+{
+  "zh": "中文提示词内容",
+  "en": "English prompt content --ar ${aspectRatio} --style raw --q 2"
+}`;
+
+      // ─── 场景四宫格四方向视图提示词（STEP 3 内部静默调用，不展示给用户）──────────
       const gridLayoutNote = isPortrait
         ? "输出一张四宫格图片（竖版9:16总画幅），四格之间有清晰黑色分割线，四格内容区域彼此相邻，禁止出现分割线以外的额外黑色外框、黑色留边或大块黑色间隔"
         : "输出四张图片，根据不同画幅，16:9可以为2x2四格内容区域彼此相邻，禁止出现分割线以外的额外黑色外框、黑色留边或大块黑色间隔";
@@ -391,8 +415,7 @@ ${renderingNote}
         ? "图片风格：CG电影风格，超写实CGI，电影级视觉特效，VFX质量，虚幻引擎电影渲染"
         : "图片风格：参考院线电影，影视大片，真实透视比例，细节清晰";
 
-      const prompt = isScene
-        ? `你是专业的AI影片制作提示词工程师。请根据以下场景信息，严格按照模板格式，为该场景生成用于 Midjourney 7（MJ7）的四宫格四方向视图提示词。
+      const sceneQuadPrompt = `你是专业的AI影片制作提示词工程师。请根据以下场景信息，严格按照模板格式，为该场景生成用于 Nano Banana Pro 的四宫格四方向视图提示词。
 
 【场景信息】
 场景名称：${name}
@@ -426,7 +449,13 @@ ${renderingNote}
 {
   "zh": "完整中文四宫格提示词（按模板填写）",
   "en": "Complete English four-view prompt --ar ${aspectRatio} --style raw --q 2"
-}`
+}`;
+
+      // 根据 type 选择对应的 prompt
+      const prompt = type === "scene"
+        ? scenePrompt
+        : type === "scene_quad"
+        ? sceneQuadPrompt
         : `你是专业的AI影片制作提示词工程师。请为以下道具生成用于 Midjourney 7（MJ7）的道具展示图提示词。
 
 【道具信息】
