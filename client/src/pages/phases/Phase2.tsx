@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ChevronRight, Wand2, Copy, Check, Loader2, Upload, ImageIcon,
   Download, Library, RefreshCw, CheckCircle2, Bot, User, Merge,
-  Mountain, Package, Users, Plus, Trash2, ChevronDown, ChevronUp,
+  Mountain, Package, Users, Plus, Trash2, ChevronDown, ChevronUp, LayoutGrid,
 } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
@@ -448,10 +448,12 @@ function SceneAssetCard({ asset, orientation }: { asset: EpisodeAsset; orientati
   const [uploading, setUploading] = useState(false);
   const [generatingMJ, setGeneratingMJ] = useState(false);
   const [generatingMain, setGeneratingMain] = useState(false);
+  const [generatingQuad, setGeneratingQuad] = useState(false);
   const [importing, setImporting] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   const generateMJMutation = trpc.ai.generateAssetPrompt.useMutation();
+  const generateQuadPromptMutation = trpc.ai.generateAssetPrompt.useMutation();
   const createAssetMutation = trpc.assets.create.useMutation();
   const uploadMutation = trpc.assets.uploadImage.useMutation();
   const generateMultiMutation = trpc.assets.generateMultiView.useMutation();
@@ -508,8 +510,38 @@ function SceneAssetCard({ asset, orientation }: { asset: EpisodeAsset; orientati
     finally { setGeneratingMain(false); }
   };
 
+  const handleGenerateQuadView = async () => {
+    if (!asset.uploadedImageUrl) { toast.error("请先在 STEP 2 上传 MJ 参考图"); return; }
+    if (!isAuthenticated) { toast.error("请先登录后再生成图片"); return; }
+    setGeneratingQuad(true);
+    try {
+      const assetId = await getOrCreateAssetId();
+      const ep = scriptAnalysis?.episodes?.find(e => e.id === asset.episodeId);
+      // 静默生成四宫格提示词（不展示给用户）
+      const quadResult = await generateQuadPromptMutation.mutateAsync({
+        type: "scene_quad",
+        name: asset.name || "场景",
+        description: asset.description || asset.name || "场景",
+        episodeContext: ep ? `第${ep.number}集《${ep.title}》：${ep.synopsis}` : undefined,
+        styleZh: projectInfo.styleZh,
+        styleEn: projectInfo.styleEn,
+        orientation: (projectInfo.orientation as "landscape" | "portrait" | undefined)
+      });
+      // 直接用四宫格提示词生成图片
+      const result = await generateMultiMutation.mutateAsync({
+        id: assetId,
+        viewType: "quad",
+        prompt: quadResult.en
+      });
+      updateEpisodeAsset(asset.id, { quadViewImageUrl: result.imageUrl });
+      utils.assets.list.invalidate();
+      toast.success("四宫格参考图生成完成！");
+    } catch (err) { toast.error(`生成失败：${err instanceof Error ? err.message : "未知错误"}`); }
+    finally { setGeneratingQuad(false); }
+  };
+
   const handleImport = async () => {
-    if (!isAuthenticated) { toast.error("请先登录后再导入资产库"); return; }
+    if (!isAuthenticated) { toast.error("请先登录后再导入资产"); return; }
     setImporting(true);
     try { await getOrCreateAssetId(); utils.assets.list.invalidate(); toast.success(`${asset.name || "场景"} 已导入资产库`); }
     catch (err) { toast.error(`导入失败：${err instanceof Error ? err.message : "未知错误"}`); }
@@ -611,6 +643,38 @@ function SceneAssetCard({ asset, orientation }: { asset: EpisodeAsset; orientati
               <p className="text-[10px]" style={{ color: S.dim }}>Nano 辅助提示词（可选，追加到构图提示词末尾）</p>
               <Textarea value={asset.nanoPrompt || ""} onChange={e => updateEpisodeAsset(asset.id, { nanoPrompt: e.target.value })} placeholder="可选：输入额外要求，如 foggy atmosphere, dramatic lighting" rows={2} className="text-xs resize-none" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", color: S.sub, fontFamily: S.mono }} />
             </div>
+          </div>
+
+          {/* STEP 3: 四宫格四方向参考图（接 Nano Banana Pro） */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "oklch(0.55 0.18 160 / 0.15)", border: "1px solid oklch(0.55 0.18 160 / 0.3)", color: S.teal, fontFamily: S.mono }}>STEP 3</span>
+                <span className="text-xs font-semibold" style={{ color: S.teal }}>四宫格四方向参考图</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "oklch(0.55 0.18 160 / 0.1)", border: "1px solid oklch(0.55 0.18 160 / 0.3)", color: S.teal, fontFamily: S.mono }}>Nano Banana Pro</span>
+              </div>
+              <Button size="sm" onClick={handleGenerateQuadView} disabled={generatingQuad || !asset.uploadedImageUrl}
+                style={{ background: asset.quadViewImageUrl ? "oklch(0.55 0.18 160 / 0.12)" : "oklch(0.55 0.18 160 / 0.12)", border: `1px solid ${asset.quadViewImageUrl ? "oklch(0.55 0.18 160 / 0.4)" : "oklch(0.55 0.18 160 / 0.35)"}`, color: S.teal }}>
+                {generatingQuad ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />生成中</> : asset.quadViewImageUrl ? <><RefreshCw className="w-3 h-3 mr-1" />重新生成</> : <><Wand2 className="w-3 h-3 mr-1" />生成四宫格参考图</>}
+              </Button>
+            </div>
+            <div className="rounded overflow-hidden" style={{ background: "oklch(0.10 0.004 240)", border: "1px solid oklch(0.22 0.006 240)", aspectRatio: isPortrait ? "9/16" : "16/9" }}>
+              {asset.quadViewImageUrl
+                ? <img src={asset.quadViewImageUrl} alt="四宫格参考图" className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
+                    <LayoutGrid className="w-5 h-5" style={{ color: "oklch(0.30 0.006 240)" }} />
+                    <span className="text-[9px]" style={{ color: "oklch(0.35 0.006 240)", fontFamily: S.mono }}>点击「生成四宫格参考图」</span>
+                    <span className="text-[9px]" style={{ color: "oklch(0.30 0.006 240)", fontFamily: S.mono }}>需先在 STEP 2 上传 MJ 参考图</span>
+                  </div>
+              }
+            </div>
+            {asset.quadViewImageUrl && (
+              <button onClick={() => forceDownload(asset.quadViewImageUrl!, `${asset.name || "场景"}-四宫格参考图.png`)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] w-fit transition-all hover:opacity-80"
+                style={{ background: "oklch(0.22 0.006 240)", border: "1px solid oklch(0.28 0.008 240)", color: S.dim, fontFamily: S.mono }}>
+                <Download className="w-2.5 h-2.5" />下载四宫格参考图
+              </button>
+            )}
           </div>
         </>
       )}

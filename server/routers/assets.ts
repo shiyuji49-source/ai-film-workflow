@@ -477,7 +477,7 @@ export const assetsRouter = router({
   generateMultiView: protectedProcedure
     .input(z.object({
       id: z.number(),
-      viewType: z.enum(["front", "side", "back", "angle1", "angle2", "angle3"]),
+      viewType: z.enum(["front", "side", "back", "angle1", "angle2", "angle3", "quad"]),
       prompt: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -497,11 +497,15 @@ export const assetsRouter = router({
         angle1: "three-quarter view, 45 degrees",
         angle2: "bird eye view, top-down angle",
         angle3: "worm eye view, low angle looking up",
+        quad: "", // quad 直接使用传入的完整提示词
       };
 
       const typeLabel = asset.type === "character" ? "character concept art, full body" : "scene concept art";
       const basePrompt = input.prompt ?? asset.mainPrompt ?? "";
-      const fullPrompt = `${typeLabel}, ${viewLabels[input.viewType]}, ${basePrompt ? basePrompt + ", " : ""}maintain exact same style and appearance as reference, consistent design, high quality, 4K`;
+      // quad 类型直接使用传入的完整四宫格提示词，不拼接 viewLabel
+      const fullPrompt = input.viewType === "quad"
+        ? basePrompt
+        : `${typeLabel}, ${viewLabels[input.viewType]}, ${basePrompt ? basePrompt + ", " : ""}maintain exact same style and appearance as reference, consistent design, high quality, 4K`;
 
       try {
         const genResult = await generateImage({

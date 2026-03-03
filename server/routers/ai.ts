@@ -349,7 +349,7 @@ ${renderingNote}
   // 3. 生成场景/道具 MJ7 提示词 ----------------------------------------------
   generateAssetPrompt: publicProcedure
     .input(z.object({
-      type: z.enum(["scene", "prop"]),
+      type: z.enum(["scene", "prop", "scene_quad"]),
       name: z.string(),
       description: z.string(),
       episodeContext: z.string().optional(),
@@ -360,7 +360,7 @@ ${renderingNote}
     .mutation(async ({ input }) => {
       const { type, name, description, episodeContext, styleZh, styleEn, orientation } = input;
 
-      const isScene = type === "scene";
+      const isScene = type === "scene" || type === "scene_quad";
       const isPortrait = orientation === "portrait";
 
       // 根据画幅确定比例

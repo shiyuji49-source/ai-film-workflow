@@ -69,6 +69,7 @@ export interface EpisodeAsset {
   angle1ImageUrl?: string;    // 四分之三视角
   angle2ImageUrl?: string;    // 俯视
   angle3ImageUrl?: string;    // 仰视
+  quadViewImageUrl?: string;  // 四宫格四方向参考图 URL（场景专用）
   assetLibId?: number;        // 已导入资产库的 ID
 }
 
