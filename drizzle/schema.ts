@@ -196,3 +196,103 @@ export const teamMembers = mysqlTable("teamMembers", {
   role: mysqlEnum("role", ["owner", "editor", "viewer"]).default("viewer").notNull(),
   joinedAt: timestamp("joinedAt").defaultNow().notNull(),
 });
+
+// ─── 出海短剧项目表 ────────────────────────────────────────────────────────────
+export const overseasProjects = mysqlTable("overseas_projects", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  /** 项目名称（剧名） */
+  name: varchar("name", { length: 128 }).notNull().default("未命名剧集"),
+  /** 市场：us / uk / au / ca / in / jp 等 */
+  market: varchar("market", { length: 32 }).notNull().default("us"),
+  /** 画幅：landscape(16:9) / portrait(9:16) */
+  aspectRatio: mysqlEnum("aspectRatio", ["landscape", "portrait"]).notNull().default("portrait"),
+  /** 风格：realistic / animation / cg */
+  style: mysqlEnum("style", ["realistic", "animation", "cg"]).notNull().default("realistic"),
+  /** 题材：romance / scifi / revenge / fantasy / thriller */
+  genre: varchar("genre", { length: 64 }).notNull().default("romance"),
+  /** 总集数 */
+  totalEpisodes: int("totalEpisodes").default(20),
+  /** 项目状态 */
+  status: mysqlEnum("status", ["draft", "in_progress", "completed"]).default("draft").notNull(),
+  /** 角色设定 JSON（[{name, description, appearance}]） */
+  characters: text("characters").default("[]"),
+  /** 场景设定 JSON（[{name, description}]） */
+  scenes: text("scenes").default("[]"),
+  isDeleted: boolean("isDeleted").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OverseasProject = typeof overseasProjects.$inferSelect;
+export type InsertOverseasProject = typeof overseasProjects.$inferInsert;
+
+// ─── 分镜表（每集每个镜头）────────────────────────────────────────────────────
+export const scriptShots = mysqlTable("script_shots", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  userId: int("userId").notNull(),
+  /** 集数编号（1-based） */
+  episodeNumber: int("episodeNumber").notNull(),
+  /** 镜头编号（集内序号，1-based） */
+  shotNumber: int("shotNumber").notNull(),
+  /** 场景名称 */
+  sceneName: varchar("sceneName", { length: 128 }),
+  /** 镜头类型：close_up / medium / wide / extreme_close / aerial */
+  shotType: varchar("shotType", { length: 64 }),
+  /** 镜头画面描述（英文，用于生成首尾帧） */
+  visualDescription: text("visualDescription"),
+  /** 台词/旁白（英文） */
+  dialogue: text("dialogue"),
+  /** 角色名（逗号分隔） */
+  characters: varchar("characters", { length: 256 }),
+  /** 情绪/氛围 */
+  emotion: varchar("emotion", { length: 64 }),
+  /** 首帧图片 URL（Nano Banana Pro 生成） */
+  firstFrameUrl: text("firstFrameUrl"),
+  /** 尾帧图片 URL（Nano Banana Pro 生成，可选） */
+  lastFrameUrl: text("lastFrameUrl"),
+  /** 首帧生成提示词 */
+  firstFramePrompt: text("firstFramePrompt"),
+  /** 尾帧生成提示词 */
+  lastFramePrompt: text("lastFramePrompt"),
+  /** 视频 URL（Seedance 1.5 或 Veo 3.1 生成） */
+  videoUrl: text("videoUrl"),
+  /** 视频生成提示词 */
+  videoPrompt: text("videoPrompt"),
+  /** 视频生成引擎：seedance_1_5 / veo_3_1 */
+  videoEngine: mysqlEnum("videoEngine", ["seedance_1_5", "veo_3_1"]),
+  /** 视频时长（秒） */
+  videoDuration: int("videoDuration"),
+  /** 生成状态 */
+  status: mysqlEnum("status", ["draft", "generating_frame", "frame_done", "generating_video", "done", "failed"]).default("draft").notNull(),
+  /** 失败原因 */
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ScriptShot = typeof scriptShots.$inferSelect;
+export type InsertScriptShot = typeof scriptShots.$inferInsert;
+
+// ─── 视频生成任务表（异步轮询）────────────────────────────────────────────────
+export const videoJobs = mysqlTable("video_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  shotId: int("shotId").notNull(),
+  /** 视频引擎 */
+  engine: mysqlEnum("engine", ["seedance_1_5", "veo_3_1"]).notNull(),
+  /** 外部任务 ID（fal request_id 或 Gemini operation name） */
+  externalJobId: varchar("externalJobId", { length: 512 }),
+  /** 任务状态 */
+  status: mysqlEnum("status", ["pending", "processing", "done", "failed"]).default("pending").notNull(),
+  /** 生成的视频 URL */
+  videoUrl: text("videoUrl"),
+  /** 错误信息 */
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type VideoJob = typeof videoJobs.$inferSelect;
+export type InsertVideoJob = typeof videoJobs.$inferInsert;

@@ -13,6 +13,7 @@ import CreditsPage from "./pages/CreditsPage";
 import AssetsPage from "./pages/AssetsPage";
 import AuthPage from "./pages/AuthPage";
 import ApiSettingsPage from "./pages/ApiSettingsPage";
+import OverseasWorkflow from "./pages/OverseasWorkflow";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -23,6 +24,7 @@ function Router() {
       <Route path={"/credits"} component={CreditsPage} />
       <Route path={"/assets"} component={AssetsPage} />
       <Route path={"/api-settings"} component={ApiSettingsPage} />
+      <Route path={"/overseas"} component={OverseasWorkflow} />
       <Route path={"/auth"}>{() => <AuthPage />}</Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
