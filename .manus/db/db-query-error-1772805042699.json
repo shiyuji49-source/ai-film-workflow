@@ -1,0 +1,8 @@
+{
+  "query": "\nALTER TABLE overseas_assets \n  ADD COLUMN IF NOT EXISTS isGlobalRef BOOLEAN NOT NULL DEFAULT FALSE,\n  ADD COLUMN IF NOT EXISTS sortOrder INT NOT NULL DEFAULT 0;\n\nALTER TABLE script_shots \n  MODIFY COLUMN videoEngine ENUM('seedance_1_5', 'veo_3_1', 'kling_3_0');\n\nALTER TABLE video_jobs \n  MODIFY COLUMN engine ENUM('seedance_1_5', 'veo_3_1', 'kling_3_0') NOT NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute \nALTER TABLE overseas_assets \n  ADD COLUMN IF NOT EXISTS isGlobalRef BOOLEAN NOT NULL DEFAULT FALSE,\n  ADD COLUMN IF NOT EXISTS sortOrder INT NOT NULL DEFAULT 0;\n\nALTER TABLE script_shots \n  MODIFY COLUMN videoEngine ENUM('seedance_1_5', 'veo_3_1', 'kling_3_0');\n\nALTER TABLE video_jobs \n  MODIFY COLUMN engine ENUM('seedance_1_5', 'veo_3_1', 'kling_3_0') NOT NULL;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1146 (42S02) at line 2: Table '9bgyfdoc3hjlkxjmyaaqgb.overseas_assets' doesn't exist"
+  ]
+}

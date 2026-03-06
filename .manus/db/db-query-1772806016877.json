@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE script_shots MODIFY COLUMN videoEngine ENUM('seedance_1_5', 'veo_3_1', 'kling_3_0');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute ALTER TABLE script_shots MODIFY COLUMN videoEngine ENUM('seedance_1_5', 'veo_3_1', 'kling_3_0');",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1610
+}

@@ -36,6 +36,13 @@
       "when": 1772799899484,
       "tag": "0004_equal_mockingbird",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1772805024059,
+      "tag": "0005_kind_wilson_fisk",
+      "breakpoints": true
     }
   ]
 }

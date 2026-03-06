@@ -262,8 +262,8 @@ export const scriptShots = mysqlTable("script_shots", {
   videoUrl: text("videoUrl"),
   /** 视频生成提示词 */
   videoPrompt: text("videoPrompt"),
-  /** 视频生成引擎：seedance_1_5 / veo_3_1 */
-  videoEngine: mysqlEnum("videoEngine", ["seedance_1_5", "veo_3_1"]),
+  /** 视频生成引擎：seedance_1_5 / veo_3_1 / kling_3_0 */
+  videoEngine: mysqlEnum("videoEngine", ["seedance_1_5", "veo_3_1", "kling_3_0"]),
   /** 视频时长（秒） */
   videoDuration: int("videoDuration"),
   /** 生成状态 */
@@ -283,7 +283,7 @@ export const videoJobs = mysqlTable("video_jobs", {
   userId: int("userId").notNull(),
   shotId: int("shotId").notNull(),
   /** 视频引擎 */
-  engine: mysqlEnum("engine", ["seedance_1_5", "veo_3_1"]).notNull(),
+  engine: mysqlEnum("engine", ["seedance_1_5", "veo_3_1", "kling_3_0"]).notNull(),
   /** 外部任务 ID（fal request_id 或 Gemini operation name） */
   externalJobId: varchar("externalJobId", { length: 512 }),
   /** 任务状态 */
@@ -326,6 +326,10 @@ export const overseasAssets = mysqlTable("overseas_assets", {
   viewBackUrl: text("viewBackUrl"),
   /** 标签（逗号分隔，用于搜索） */
   tags: varchar("tags", { length: 500 }),
+  /** 是否设为全局参考图（所有镜头自动带入此资产） */
+  isGlobalRef: boolean("isGlobalRef").default(false).notNull(),
+  /** 排序权重（数字越小越靠前） */
+  sortOrder: int("sortOrder").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

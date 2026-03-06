@@ -1,0 +1,18 @@
+{
+  "query": "SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'script_shots' AND COLUMN_NAME IN ('videoEngine', 'klingJobId', 'errorMessage');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'script_shots' AND COLUMN_NAME IN ('videoEngine', 'klingJobId', 'errorMessage');",
+  "rows": [
+    {
+      "COLUMN_NAME": "videoEngine",
+      "COLUMN_TYPE": "enum('seedance_1_5','veo_3_1','kling_3_0')"
+    },
+    {
+      "COLUMN_NAME": "errorMessage",
+      "COLUMN_TYPE": "text"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tCOLUMN_TYPE\nvideoEngine\tenum('seedance_1_5','veo_3_1','kling_3_0')\nerrorMessage\ttext\n",
+  "stderr": "",
+  "execution_time_ms": 1568
+}

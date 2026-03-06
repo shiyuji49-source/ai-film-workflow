@@ -1,0 +1,55 @@
+{
+  "query": "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name;",
+  "rows": [
+    {
+      "table_name": "__drizzle_migrations"
+    },
+    {
+      "table_name": "api_settings"
+    },
+    {
+      "table_name": "asset_history"
+    },
+    {
+      "table_name": "assets"
+    },
+    {
+      "table_name": "creditLogs"
+    },
+    {
+      "table_name": "credit_transactions"
+    },
+    {
+      "table_name": "invite_codes"
+    },
+    {
+      "table_name": "orders"
+    },
+    {
+      "table_name": "overseas_projects"
+    },
+    {
+      "table_name": "projects"
+    },
+    {
+      "table_name": "script_shots"
+    },
+    {
+      "table_name": "teamMembers"
+    },
+    {
+      "table_name": "teams"
+    },
+    {
+      "table_name": "users"
+    },
+    {
+      "table_name": "video_jobs"
+    }
+  ],
+  "messages": [],
+  "stdout": "table_name\n__drizzle_migrations\napi_settings\nasset_history\nassets\ncreditLogs\ncredit_transactions\ninvite_codes\norders\noverseas_projects\nprojects\nscript_shots\nteamMembers\nteams\nusers\nvideo_jobs\n",
+  "stderr": "",
+  "execution_time_ms": 1585
+}

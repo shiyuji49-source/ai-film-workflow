@@ -63,6 +63,8 @@ type OverseasAsset = {
   viewSideUrl: string | null;
   viewBackUrl: string | null;
   tags: string | null;
+  isGlobalRef: boolean;
+  sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -84,7 +86,7 @@ type ScriptShot = {
   lastFramePrompt: string | null;
   videoUrl: string | null;
   videoPrompt: string | null;
-  videoEngine: "seedance_1_5" | "veo_3_1" | null;
+  videoEngine: "seedance_1_5" | "veo_3_1" | "kling_3_0" | null;
   videoDuration: number | null;
   status: "draft" | "generating_frame" | "frame_done" | "generating_video" | "done" | "failed";
   errorMessage: string | null;
@@ -413,6 +415,8 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
   const [selectedShotIds, setSelectedShotIds] = useState<Set<number>>(new Set());
   const [batchActionRunning, setBatchActionRunning] = useState(false);
   const [batchActionProgress, setBatchActionProgress] = useState({ done: 0, total: 0, action: "" });
+  // 批量跑量面板状态
+  const [showBatchRunPanel, setShowBatchRunPanel] = useState(false);
 
   const parseScript = trpc.overseas.parseScript.useMutation({
     onSuccess: (result) => {
@@ -689,13 +693,13 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
         {episodeShots.length > 0 && (
           <div style={{ display: "flex", gap: 8, marginBottom: 16, padding: "10px 14px", background: "oklch(0.75 0.17 65 / 0.06)", border: `1px solid oklch(0.75 0.17 65 / 0.2)`, borderRadius: 10, fontSize: 12, color: C.muted, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ color: C.amber, fontWeight: 700 }}>工作流：</span>
-            <span>① MJ 生成人物/场景资产</span>
+            <span>① MJ 生成人物/场景资产（设为全局参考）</span>
             <ChevronRight size={12} />
-            <span>② AI 生成首帧提示词 → Nano Banana Pro 生成首帧图</span>
+            <span>② NBP Reference to Video 生成首帧</span>
             <ChevronRight size={12} />
-            <span>③（可选）生成尾帧图</span>
+            <span>③ AI 生成视频提示词</span>
             <ChevronRight size={12} />
-            <span>④ 生成视频提示词 → Seedance 1.5 / Veo 3.1 生成视频</span>
+            <span style={{ color: C.amber, fontWeight: 600 }}>④ ⚡ Kling 3.0 Elements 人物一致性视频</span>
           </div>
         )}
 
@@ -853,8 +857,30 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
                       <CheckSquare size={13} /> {selectMode ? `已选 ${selectedShotIds.size}` : "多选"}
                     </Button>
                   )}
+                  {episodeShots.length > 0 && (
+                    <Button
+                      onClick={() => setShowBatchRunPanel(!showBatchRunPanel)}
+                      style={{
+                        background: showBatchRunPanel ? "oklch(0.75 0.17 65 / 0.25)" : "oklch(0.75 0.17 65)",
+                        color: "oklch(0.1 0.005 240)", fontSize: 12, gap: 6, fontWeight: 700,
+                        border: `1px solid ${C.amber}`,
+                      }}
+                    >
+                      <Zap size={13} /> ⚡ 批量跑量
+                    </Button>
+                  )}
                 </div>
               </div>
+
+              {/* 批量跑量面板 */}
+              {showBatchRunPanel && data && (
+                <BatchRunPanel
+                  projectId={projectId}
+                  project={data.project as OverseasProject}
+                  onClose={() => setShowBatchRunPanel(false)}
+                  onComplete={() => { setShowBatchRunPanel(false); refetch(); }}
+                />
+              )}
 
               {episodeShots.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "4rem 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
@@ -958,7 +984,7 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
   const [generatingLastFrame, setGeneratingLastFrame] = useState(false);
   const [generatingVideoPrompt, setGeneratingVideoPrompt] = useState(false);
   const [generatingVideo, setGeneratingVideo] = useState(false);
-  const [videoEngine, setVideoEngine] = useState<"seedance_1_5" | "veo_3_1">("seedance_1_5");
+  const [videoEngine, setVideoEngine] = useState<"seedance_1_5" | "veo_3_1" | "kling_3_0">("kling_3_0");
   const [useLastFrame, setUseLastFrame] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [editedVideoPrompt, setEditedVideoPrompt] = useState(shot.videoPrompt || "");
@@ -1244,24 +1270,31 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {/* 引擎选择 */}
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {(["seedance_1_5", "veo_3_1"] as const).map(eng => (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {(["kling_3_0", "seedance_1_5", "veo_3_1"] as const).map(eng => (
                         <button
                           key={eng}
                           onClick={() => setVideoEngine(eng)}
                           style={{
-                            flex: 1, padding: "8px 12px", borderRadius: 8, border: `1px solid ${videoEngine === eng ? C.amber : C.border}`,
+                            flex: 1, minWidth: 100, padding: "8px 12px", borderRadius: 8, border: `1px solid ${videoEngine === eng ? C.amber : C.border}`,
                             background: videoEngine === eng ? "oklch(0.75 0.17 65 / 0.1)" : "transparent",
                             color: videoEngine === eng ? C.amber : C.muted, cursor: "pointer", fontSize: 12, fontWeight: videoEngine === eng ? 700 : 400,
                             transition: "all 0.15s",
                           }}
                         >
-                          {eng === "seedance_1_5" ? "🎬 Seedance 1.5" : "🌐 Veo 3.1"}
+                          {eng === "kling_3_0" ? "⚡ Kling 3.0" : eng === "seedance_1_5" ? "🎬 Seedance 1.5" : "🌐 Veo 3.1"}
                         </button>
                       ))}
                     </div>
 
                     {/* 引擎 Key 状态提示 */}
+                    {videoEngine === "kling_3_0" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 8px", borderRadius: 6, background: "oklch(0.75 0.17 65 / 0.06)", border: "1px solid oklch(0.75 0.17 65 / 0.25)" }}>
+                        <span style={{ color: C.amber }}>⚡</span>
+                        <span style={{ color: "oklch(0.60 0.01 240)" }}>Kling 3.0 via Fal.ai，支持 Elements 参考图一致性，需要</span>
+                        <a href="/api-settings" style={{ color: C.amber, textDecoration: "underline" }}>Fal.ai API Key</a>
+                      </div>
+                    )}
                     {videoEngine === "seedance_1_5" && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 8px", borderRadius: 6, background: "oklch(0.65 0.15 200 / 0.08)", border: "1px solid oklch(0.65 0.15 200 / 0.20)" }}>
                         <span style={{ color: "oklch(0.65 0.15 200)" }}>ℹ️</span>
@@ -1300,7 +1333,13 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                         if (!shot.firstFrameUrl) { toast.error("请先生成首帧图片"); return; }
                         if (!shot.videoPrompt) { toast.error("请先生成视频提示词"); return; }
                         setGeneratingVideo(true);
-                        generateVideo.mutate({ shotId: shot.id, engine: videoEngine, aspectRatio: project.aspectRatio === "portrait" ? "9:16" : "16:9", useLastFrame });
+                        generateVideo.mutate({
+                          shotId: shot.id,
+                          engine: videoEngine,
+                          aspectRatio: project.aspectRatio === "portrait" ? "9:16" : "16:9",
+                          useLastFrame,
+                          referenceImageUrls: videoEngine === "kling_3_0" && selectedAssetUrls.length > 0 ? selectedAssetUrls : undefined,
+                        });
                       }}
                       disabled={generatingVideo || shot.status === "generating_video"}
                       style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 13, gap: 6 }}
@@ -1308,7 +1347,7 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                       {generatingVideo || shot.status === "generating_video" ? (
                         <><Loader2 className="animate-spin w-4 h-4" /> 生成视频中（约 1-3 分钟）...</>
                       ) : (
-                        <><Video size={14} /> 生成视频</>
+                        <><Video size={14} /> {videoEngine === "kling_3_0" ? "Kling 3.0 生成视频" : videoEngine === "seedance_1_5" ? "Seedance 生成视频" : "Veo 3.1 生成视频"}</>
                       )}
                     </Button>
 
@@ -1398,7 +1437,297 @@ function FramePanel({ label, url, prompt, aspectRatio, generating, onGenerate }:
   );
 }
 
-// ─── 出海短剧资产管理面板 ──────────────────────────────────────────────────────
+// ─── 批量跑量面板 ──────────────────────────────────────────────────────────────
+
+function BatchRunPanel({
+  projectId,
+  project,
+  onClose,
+  onComplete,
+}: {
+  projectId: number;
+  project: OverseasProject;
+  onClose: () => void;
+  onComplete: () => void;
+}) {
+  const C = {
+    text: "oklch(0.92 0.005 240)",
+    muted: "oklch(0.55 0.008 240)",
+    amber: "oklch(0.75 0.17 65)",
+    border: "oklch(0.25 0.008 240)",
+    bg: "oklch(0.13 0.005 240)",
+    surface: "oklch(0.17 0.006 240)",
+    surface2: "oklch(0.20 0.007 240)",
+  };
+  const [engine, setEngine] = useState<"kling_3_0" | "seedance_1_5" | "veo_3_1">("kling_3_0");
+  const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">(project.aspectRatio === "portrait" ? "9:16" : "16:9");
+  const [duration, setDuration] = useState<5 | 10>(5);
+  const [generateAudio, setGenerateAudio] = useState(false);
+  const [skipExisting, setSkipExisting] = useState(true);
+  const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([1]);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<{ total: number; processed: number; failed: number; errors: Array<{ shotId: number; episodeNumber: number; shotNumber: number; error: string }> } | null>(null);
+
+  // 资产列表（用于显示全局参考图状态）
+  const { data: assetsData, refetch: refetchAssets } = trpc.overseas.listAssets.useQuery({ projectId });
+  const updateAsset = trpc.overseas.updateAsset.useMutation({ onSuccess: () => refetchAssets() });
+
+  const batchRun = trpc.overseas.batchRun.useMutation({
+    onSuccess: (res) => {
+      setResult(res);
+      setRunning(false);
+      toast.success(`批量跑量完成！共 ${res.processed} 个首帧+视频已生成，${res.failed} 个失败`);
+    },
+    onError: (err) => {
+      setRunning(false);
+      toast.error("批量跑量失败: " + err.message);
+    },
+  });
+
+  const globalRefAssets = assetsData?.filter((a) => a.isGlobalRef) ?? [];
+  const allAssets = assetsData ?? [];
+
+  const episodeOptions = Array.from({ length: project.totalEpisodes || 10 }, (_, i) => i + 1);
+
+  const handleStart = () => {
+    if (selectedEpisodes.length === 0) { toast.error("请选择要跑量的集数"); return; }
+    setRunning(true);
+    setResult(null);
+    batchRun.mutate({
+      projectId,
+      episodeNumbers: selectedEpisodes,
+      engine,
+      aspectRatio,
+      duration,
+      generateAudio,
+      skipExisting,
+    });
+  };
+
+  return (
+    <div style={{
+      marginBottom: 20, padding: "20px 24px", background: "oklch(0.14 0.006 240)",
+      border: `2px solid ${C.amber}`, borderRadius: 14,
+    }}>
+      {/* 标题行 */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Zap size={18} style={{ color: C.amber }} />
+          <span style={{ fontSize: 16, fontWeight: 700, color: C.text, fontFamily: "'Space Grotesk', sans-serif" }}>
+            批量跑量看板
+          </span>
+          <span style={{ fontSize: 11, color: C.muted, padding: "2px 8px", borderRadius: 20, background: "oklch(0.75 0.17 65 / 0.1)", border: `1px solid oklch(0.75 0.17 65 / 0.3)` }}>
+            首帧 → 视频提示词 → 视频 全自动
+          </span>
+        </div>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, padding: 4 }}>
+          <X size={16} />
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        {/* 左列：配置 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* 引擎选择 */}
+          <div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>视频引擎</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {(["kling_3_0", "seedance_1_5", "veo_3_1"] as const).map(eng => (
+                <button key={eng} onClick={() => setEngine(eng)} style={{
+                  flex: 1, padding: "8px 6px", borderRadius: 8,
+                  border: `1px solid ${engine === eng ? C.amber : C.border}`,
+                  background: engine === eng ? "oklch(0.75 0.17 65 / 0.12)" : "transparent",
+                  color: engine === eng ? C.amber : C.muted, cursor: "pointer", fontSize: 11, fontWeight: engine === eng ? 700 : 400,
+                }}>
+                  {eng === "kling_3_0" ? "⚡ Kling 3.0" : eng === "seedance_1_5" ? "🎬 Seedance" : "🌐 Veo 3.1"}
+                </button>
+              ))}
+            </div>
+            {engine === "kling_3_0" && (
+              <div style={{ marginTop: 6, fontSize: 11, color: "oklch(0.65 0.12 65)", padding: "5px 8px", borderRadius: 6, background: "oklch(0.75 0.17 65 / 0.06)", border: "1px solid oklch(0.75 0.17 65 / 0.2)" }}>
+                ⚡ Kling 3.0 将自动把标记为「全局参考」的资产图作为 Elements 参考图，实现人物一致性
+              </div>
+            )}
+          </div>
+
+          {/* 视频参数 */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>画面比例</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {(["9:16", "16:9"] as const).map(r => (
+                  <button key={r} onClick={() => setAspectRatio(r)} style={{
+                    flex: 1, padding: "6px 4px", borderRadius: 6,
+                    border: `1px solid ${aspectRatio === r ? C.amber : C.border}`,
+                    background: aspectRatio === r ? "oklch(0.75 0.17 65 / 0.1)" : "transparent",
+                    color: aspectRatio === r ? C.amber : C.muted, cursor: "pointer", fontSize: 11,
+                  }}>{r}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>时长</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {([5, 10] as const).map(d => (
+                  <button key={d} onClick={() => setDuration(d)} style={{
+                    flex: 1, padding: "6px 4px", borderRadius: 6,
+                    border: `1px solid ${duration === d ? C.amber : C.border}`,
+                    background: duration === d ? "oklch(0.75 0.17 65 / 0.1)" : "transparent",
+                    color: duration === d ? C.amber : C.muted, cursor: "pointer", fontSize: 11,
+                  }}>{d}s</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 选集 */}
+          <div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>选择要跑量的集（可多选）</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {episodeOptions.map(ep => (
+                <button key={ep} onClick={() => {
+                  setSelectedEpisodes(prev =>
+                    prev.includes(ep) ? prev.filter(e => e !== ep) : [...prev, ep]
+                  );
+                }} style={{
+                  padding: "4px 12px", borderRadius: 20,
+                  border: `1px solid ${selectedEpisodes.includes(ep) ? C.amber : C.border}`,
+                  background: selectedEpisodes.includes(ep) ? "oklch(0.75 0.17 65 / 0.15)" : "transparent",
+                  color: selectedEpisodes.includes(ep) ? C.amber : C.muted, cursor: "pointer", fontSize: 12,
+                }}>
+                  第{ep}集
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 其他选项 */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: C.muted }}>
+              <input type="checkbox" checked={skipExisting} onChange={e => setSkipExisting(e.target.checked)}
+                style={{ accentColor: C.amber, width: 14, height: 14 }} />
+              跳过已完成的镜头（断点续跑）
+            </label>
+            {engine === "seedance_1_5" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: C.muted }}>
+                <input type="checkbox" checked={generateAudio} onChange={e => setGenerateAudio(e.target.checked)}
+                  style={{ accentColor: C.amber, width: 14, height: 14 }} />
+                生成音频（Seedance）
+              </label>
+            )}
+          </div>
+        </div>
+
+        {/* 右列：Elements 参考图管理 */}
+        <div>
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            {engine === "kling_3_0" ? "⚡ Kling Elements 参考图（人物一致性）" : "全局参考图资产"}
+          </div>
+          <div style={{ fontSize: 11, color: "oklch(0.50 0.01 240)", marginBottom: 10 }}>
+            {engine === "kling_3_0"
+              ? "将下方资产图片标记为「全局参考」，Kling 3.0 将其作为 Elements 参考图保持人物外貌一致性"
+              : "将资产标记为全局参考后，首帧生成时会自动带入该图片"}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+            {allAssets.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 12 }}>
+                还没有资产，请先在「资产库」阶段上传 MJ 参考图
+              </div>
+            ) : (
+              allAssets.map(asset => {
+                const imgUrl = asset.mainImageUrl || asset.mjImageUrl;
+                return (
+                  <div key={asset.id} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8,
+                    border: `1px solid ${asset.isGlobalRef ? C.amber : C.border}`,
+                    background: asset.isGlobalRef ? "oklch(0.75 0.17 65 / 0.06)" : "oklch(0.16 0.006 240)",
+                    cursor: "pointer",
+                  }}
+                    onClick={() => updateAsset.mutate({ id: asset.id, isGlobalRef: !asset.isGlobalRef })}
+                  >
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={asset.name} style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 36, height: 36, borderRadius: 6, background: "oklch(0.22 0.006 240)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <ImageIcon size={14} style={{ color: C.muted }} />
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</div>
+                      <div style={{ fontSize: 10, color: C.muted }}>{asset.type === "character" ? "👤 人物" : asset.type === "scene" ? "🌄 场景" : "📦 道具"}</div>
+                    </div>
+                    <div style={{
+                      padding: "3px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700,
+                      background: asset.isGlobalRef ? "oklch(0.75 0.17 65 / 0.2)" : "oklch(0.22 0.006 240)",
+                      color: asset.isGlobalRef ? C.amber : C.muted,
+                      border: `1px solid ${asset.isGlobalRef ? C.amber : C.border}`,
+                    }}>
+                      {asset.isGlobalRef ? "✓ 全局参考" : "未选"}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          {globalRefAssets.length > 0 && (
+            <div style={{ marginTop: 10, padding: "6px 10px", borderRadius: 6, background: "oklch(0.75 0.17 65 / 0.08)", border: "1px solid oklch(0.75 0.17 65 / 0.25)", fontSize: 11, color: C.amber }}>
+              ✓ {globalRefAssets.length} 张参考图将作为{engine === "kling_3_0" ? " Elements" : ""}带入每个镜头
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 运行结果 */}
+      {result && (
+        <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, background: result.failed > 0 ? "oklch(0.65 0.18 30 / 0.08)" : "oklch(0.65 0.20 145 / 0.08)", border: `1px solid ${result.failed > 0 ? "oklch(0.65 0.18 30 / 0.3)" : "oklch(0.65 0.20 145 / 0.3)"}` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: result.failed > 0 ? "oklch(0.75 0.18 30)" : "oklch(0.65 0.20 145)", marginBottom: 6 }}>
+            跑量完成：共 {result.total} 个镜头，成功 {result.processed} 个，失败 {result.failed} 个
+          </div>
+          {result.errors.length > 0 && (
+            <div style={{ maxHeight: 120, overflowY: "auto" }}>
+              {result.errors.map((e, i) => (
+                <div key={i} style={{ fontSize: 11, color: "oklch(0.75 0.18 30)", marginBottom: 3 }}>
+                  第{e.episodeNumber}集镜头{e.shotNumber}: {e.error}
+                </div>
+              ))}
+            </div>
+          )}
+          <Button onClick={onComplete} style={{ marginTop: 8, background: "oklch(0.65 0.20 145)", color: "white", fontSize: 12, gap: 6 }}>
+            <CheckSquare size={12} /> 关闭并刷新
+          </Button>
+        </div>
+      )}
+
+      {/* 开始按鈕 */}
+      {!result && (
+        <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center" }}>
+          <Button
+            onClick={handleStart}
+            disabled={running || selectedEpisodes.length === 0}
+            style={{
+              background: running ? "oklch(0.30 0.01 240)" : "oklch(0.75 0.17 65)",
+              color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 14, gap: 8,
+              padding: "10px 24px", borderRadius: 10,
+            }}
+          >
+            {running ? (
+              <><Loader2 className="animate-spin w-4 h-4" /> 跑量中（可能需要数分钟）...</>
+            ) : (
+              <><Zap size={16} /> 开始批量跑量（{selectedEpisodes.length} 集）</>
+            )}
+          </Button>
+          {running && (
+            <span style={{ fontSize: 12, color: C.muted }}>
+              正在串行处理分镇表，请勿关闭页面...
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 出海短剧资产管理面板 ──────────────────────────────────────────────
 
 function OverseasAssetPanel({ projectId, project, compact }: { projectId: number; project: OverseasProject; compact?: boolean }) {
   const [assetTab, setAssetTab] = useState<"character" | "scene" | "prop">("character");
@@ -1629,6 +1958,22 @@ function OverseasAssetCard({ asset, project, expanded, onToggle, onDelete, onRef
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {asset.mainImageUrl && <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.green }} />}
+          {/* 全局参考开关 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              updateAsset.mutate({ id: asset.id, isGlobalRef: !asset.isGlobalRef });
+            }}
+            style={{
+              padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, cursor: "pointer",
+              background: asset.isGlobalRef ? "oklch(0.75 0.17 65 / 0.2)" : "oklch(0.22 0.006 240)",
+              color: asset.isGlobalRef ? C.amber : C.muted,
+              border: `1px solid ${asset.isGlobalRef ? C.amber : C.border}`,
+              transition: "all 0.15s",
+            }}
+          >
+            {asset.isGlobalRef ? "⚡ Elements" : "参考"}
+          </button>
           {expanded ? <ChevronUp size={14} style={{ color: C.muted }} /> : <ChevronDown size={14} style={{ color: C.muted }} />}
         </div>
       </div>
