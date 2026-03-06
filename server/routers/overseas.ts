@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { overseasProjects, scriptShots, videoJobs, overseasAssets } from "../../drizzle/schema";
+import { overseasProjects, scriptShots, videoJobs, overseasAssets, apiSettings } from "../../drizzle/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { invokeLLM } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
 import { storagePut } from "../storage";
 import { nanoid } from "nanoid";
+import * as XLSX from "xlsx";
 
 // ─── 项目 CRUD ────────────────────────────────────────────────────────────────
 
@@ -422,8 +423,15 @@ Return ONLY the prompt, no explanation.`,
 
       if (engine === "seedance_1_5") {
         // Seedance 1.5 via fal.ai
-        const FAL_KEY = process.env.FAL_API_KEY;
-        if (!FAL_KEY) throw new Error("FAL_API_KEY not configured");
+        // 优先使用用户自己配置的 Fal.ai Key，其次使用环境变量
+        let FAL_KEY = process.env.FAL_API_KEY;
+        const [userApiSetting] = await (await getDb())!
+          .select({ falApiKey: apiSettings.falApiKey })
+          .from(apiSettings)
+          .where(eq(apiSettings.userId, ctx.user.id))
+          .limit(1);
+        if (userApiSetting?.falApiKey) FAL_KEY = userApiSetting.falApiKey;
+        if (!FAL_KEY) throw new Error("请先在 AI 设置页面配置 Fal.ai API Key，用于 Seedance 1.5 视频生成");
 
         const payload: Record<string, unknown> = {
           prompt: shot.videoPrompt,
@@ -817,10 +825,81 @@ Return ONLY the prompt, no explanation.`,
         side: "viewSideUrl",
         back: "viewBackUrl",
       };
-      await db!.update(overseasAssets)
+       await db!.update(overseasAssets)
         .set({ [fieldMap[input.viewType]]: s3Url })
         .where(eq(overseasAssets.id, asset.id));
-
       return { url: s3Url, viewType: input.viewType };
+    }),
+
+  // ── Excel 分镜表导入 ───────────────────────────────────────────────────────
+  importScriptFromExcel: protectedProcedure
+    .input(z.object({
+      projectId: z.number().int(),
+      episodeNumber: z.number().int().min(1),
+      fileBase64: z.string(), // base64 编码的 Excel 文件
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      // 验证项目归属
+      const [project] = await db!.select().from(overseasProjects)
+        .where(and(eq(overseasProjects.id, input.projectId), eq(overseasProjects.userId, ctx.user.id)));
+      if (!project) throw new Error("Project not found");
+
+      // 解析 Excel
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
+
+      // 解析分镜行：列名支持中英文
+      const shots: Array<{ shotNumber: number; sceneName: string; visualDescription: string; dialogue: string | null; characters: string | null }> = [];
+      for (const row of rows) {
+        // 找编号列（支持「编号/ID」「Shot#」「Shot」「ID」等）
+        const idKeys = Object.keys(row).filter(k => /^(编号|shot|id|#)/i.test(k.trim()));
+        const sceneKeys = Object.keys(row).filter(k => /^(场景|scene)/i.test(k.trim()));
+        const contentKeys = Object.keys(row).filter(k => /^(画面|content|visual|description)/i.test(k.trim()));
+        const dialogueKeys = Object.keys(row).filter(k => /^(台词|lines|dialogue|dialog)/i.test(k.trim()));
+        const charKeys = Object.keys(row).filter(k => /^(角色|char|character)/i.test(k.trim()));
+
+        const idVal = idKeys.length > 0 ? row[idKeys[0]] : null;
+        if (!idVal || typeof idVal !== "number") continue; // 跳过非数字行（标题/空行）
+
+        const shotNum = Math.round(idVal as number);
+        const sceneName = sceneKeys.length > 0 ? String(row[sceneKeys[0]] ?? "") : "";
+        const visualDesc = contentKeys.length > 0 ? String(row[contentKeys[0]] ?? "") : "";
+        const dialogue = dialogueKeys.length > 0 && row[dialogueKeys[0]] ? String(row[dialogueKeys[0]]) : null;
+        const characters = charKeys.length > 0 && row[charKeys[0]] ? String(row[charKeys[0]]) : null;
+
+        if (!visualDesc.trim()) continue;
+        shots.push({ shotNumber: shotNum, sceneName, visualDescription: visualDesc, dialogue, characters });
+      }
+
+      if (shots.length === 0) throw new Error("未找到有效分镜数据，请确认 Excel 格式正确（需包含编号/ID、画面描述/Content 列）");
+
+      // 删除该集已有分镜
+      await db!.delete(scriptShots)
+        .where(and(
+          eq(scriptShots.projectId, input.projectId),
+          eq(scriptShots.episodeNumber, input.episodeNumber),
+          eq(scriptShots.userId, ctx.user.id),
+        ));
+
+      // 批量插入新分镜
+      for (const s of shots) {
+        await db!.insert(scriptShots).values({
+          projectId: input.projectId,
+          userId: ctx.user.id,
+          episodeNumber: input.episodeNumber,
+          shotNumber: s.shotNumber,
+          sceneName: s.sceneName || undefined,
+          visualDescription: s.visualDescription,
+          dialogue: s.dialogue ?? undefined,
+          characters: s.characters ?? undefined,
+          status: "draft",
+        });
+      }
+
+      return { imported: shots.length, episodeNumber: input.episodeNumber };
     }),
 });

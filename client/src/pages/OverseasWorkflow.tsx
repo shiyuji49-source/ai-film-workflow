@@ -10,7 +10,7 @@ import {
   Wand2, ImageIcon, Video, Upload, Edit3, Check, X,
   Loader2, Globe, Clapperboard, ArrowLeft, RefreshCw,
   Copy, Download, Play, AlertCircle, Sparkles,
-  Users, MapPin, Package, Layers
+  Users, MapPin, Package, Layers, FileSpreadsheet, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -400,6 +400,11 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
   const [expandedShot, setExpandedShot] = useState<number | null>(null);
   const [showScriptInput, setShowScriptInput] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<"shots" | "assets">("shots");
+  const [importingExcel, setImportingExcel] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
+  // 批量生成首帧状态
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
 
   const parseScript = trpc.overseas.parseScript.useMutation({
     onSuccess: (result) => {
@@ -411,6 +416,46 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
     },
     onError: (e) => { toast.error(e.message); setParsingScript(false); },
   });
+
+  const importExcel = trpc.overseas.importScriptFromExcel.useMutation({
+    onSuccess: (result) => {
+      toast.success(`已导入 ${result.imported} 个分镜`);
+      refetch();
+      setImportingExcel(false);
+    },
+    onError: (e) => { toast.error(e.message); setImportingExcel(false); },
+  });
+
+  const generateFrame = trpc.overseas.generateFrame.useMutation();
+
+  const handleExcelUpload = async (file: File) => {
+    setImportingExcel(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = (e.target?.result as string).split(",")[1];
+      importExcel.mutate({ projectId, episodeNumber: activeEpisode, fileBase64: base64 });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleBatchGenerateFrames = async (shots: ScriptShot[]) => {
+    const pending = shots.filter(s => !s.firstFrameUrl);
+    if (pending.length === 0) { toast.success("本集所有镜头已生成首帧"); return; }
+    setBatchGenerating(true);
+    setBatchProgress({ done: 0, total: pending.length });
+    for (let i = 0; i < pending.length; i++) {
+      try {
+        await generateFrame.mutateAsync({ shotId: pending[i].id, frameType: "first" });
+        setBatchProgress({ done: i + 1, total: pending.length });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error(`镜头 ${pending[i].shotNumber} 生成失败: ${msg}`);
+      }
+    }
+    setBatchGenerating(false);
+    refetch();
+    toast.success(`批量生成完成！共处理 ${pending.length} 个镜头`);
+  };
 
   if (isLoading) {
     return (
@@ -489,14 +534,44 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
               {episodeShots.length} 个镜头 · {frameCount} 帧已生成 · {doneCount} 视频完成
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {/* 隐藏的 Excel file input */}
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              style={{ display: "none" }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleExcelUpload(f); e.target.value = ""; }}
+            />
+            {/* Excel 导入按鈕 */}
+            <Button
+              variant="outline"
+              onClick={() => excelInputRef.current?.click()}
+              disabled={importingExcel}
+              style={{ borderColor: C.border, color: C.muted, fontSize: 12, gap: 6 }}
+            >
+              {importingExcel ? <><Loader2 className="animate-spin w-3 h-3" /> 导入中...</> : <><FileSpreadsheet size={13} /> Excel 分镜导入</>}
+            </Button>
+            {/* AI 解析剧本按鈕 */}
             <Button
               variant="outline"
               onClick={() => setShowScriptInput(!showScriptInput)}
               style={{ borderColor: C.border, color: C.muted, fontSize: 12, gap: 6 }}
             >
-              <Upload size={13} /> {episodeShots.length > 0 ? "重新解析剧本" : "导入剧本"}
+              <Upload size={13} /> {episodeShots.length > 0 ? "重新解析剧本" : "AI 解析剧本"}
             </Button>
+            {/* 批量生成首帧按鈕 */}
+            {episodeShots.length > 0 && (
+              <Button
+                onClick={() => handleBatchGenerateFrames(episodeShots)}
+                disabled={batchGenerating}
+                style={{ background: batchGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, fontSize: 12, gap: 6, fontWeight: 600 }}
+              >
+                {batchGenerating
+                  ? <><Loader2 className="animate-spin w-3 h-3" /> 生成中 {batchProgress.done}/{batchProgress.total}</>
+                  : <><Zap size={13} /> 一键生成全部首帧</>}
+              </Button>
+            )}
           </div>
         </div>
 

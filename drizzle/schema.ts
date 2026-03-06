@@ -177,6 +177,8 @@ export const apiSettings = mysqlTable("api_settings", {
   apiKey: text("apiKey"),
   /** 自定义 API Base URL（用于代理或本地模型） */
   apiBaseUrl: text("apiBaseUrl"),
+  /** Fal.ai API Key（用于 Seedance 1.5 视频生成） */
+  falApiKey: text("falApiKey"),
   /** 最后一次检测结果: ok | error | untested */
   lastTestStatus: varchar("lastTestStatus", { length: 16 }).default("untested"),
   /** 最后一次检测时间 */

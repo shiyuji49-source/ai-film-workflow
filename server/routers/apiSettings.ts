@@ -234,4 +234,44 @@ export const apiSettingsRouter = router({
 
       return { status, message, latencyMs };
     }),
+
+  // 保存 Fal.ai API Key
+  saveFalKey: protectedProcedure
+    .input(z.object({ falApiKey: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("数据库不可用");
+      const existing = await db
+        .select({ id: apiSettings.id })
+        .from(apiSettings)
+        .where(eq(apiSettings.userId, ctx.user.id))
+        .limit(1);
+      if (existing.length > 0) {
+        await db
+          .update(apiSettings)
+          .set({ falApiKey: input.falApiKey || null })
+          .where(eq(apiSettings.userId, ctx.user.id));
+      } else {
+        await db.insert(apiSettings).values({
+          userId: ctx.user.id,
+          provider: "gemini",
+          model: "gemini-3-flash-preview",
+          falApiKey: input.falApiKey || null,
+          lastTestStatus: "untested",
+        });
+      }
+      return { success: true };
+    }),
+
+  // 获取 Fal.ai API Key 配置状态（仅返回是否已配置，不返回明文）
+  getFalKeyStatus: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) return { configured: false };
+    const [setting] = await db
+      .select({ falApiKey: apiSettings.falApiKey })
+      .from(apiSettings)
+      .where(eq(apiSettings.userId, ctx.user.id))
+      .limit(1);
+    return { configured: !!(setting?.falApiKey) };
+  }),
 });

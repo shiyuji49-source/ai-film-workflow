@@ -29,6 +29,13 @@
       "when": 1772718748989,
       "tag": "0003_daily_dust",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1772799899484,
+      "tag": "0004_equal_mockingbird",
+      "breakpoints": true
     }
   ]
 }

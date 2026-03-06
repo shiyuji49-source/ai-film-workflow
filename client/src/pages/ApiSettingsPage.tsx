@@ -32,6 +32,83 @@ const PROVIDER_COLORS: Record<string, string> = {
 
 type TestStatus = "idle" | "testing" | "ok" | "error";
 
+// Fal.ai API Key 配置卡片
+function FalApiKeyCard() {
+  const { data: falStatus, refetch } = trpc.apiSettings.getFalKeyStatus.useQuery();
+  const saveFalKey = trpc.apiSettings.saveFalKey.useMutation();
+  const [falKey, setFalKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      await saveFalKey.mutateAsync({ falApiKey: falKey });
+      toast.success("Fal.ai API Key 已保存");
+      setFalKey("");
+      setIsDirty(false);
+      refetch();
+    } catch (e: unknown) {
+      toast.error("保存失败：" + (e instanceof Error ? e.message : "未知错误"));
+    }
+  };
+
+  return (
+    <div className="rounded-xl p-4 space-y-3" style={{ background: "oklch(0.16 0.006 240)", border: "1px solid oklch(0.25 0.008 240)" }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🎬</span>
+          <div>
+            <h3 className="text-sm font-semibold" style={{ color: "oklch(0.90 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>Fal.ai 视频生成</h3>
+            <p className="text-xs" style={{ color: "oklch(0.55 0.01 240)" }}>Seedance 1.5 图生视频（出海短剧工作流）</p>
+          </div>
+        </div>
+        <span className="text-xs px-2 py-1 rounded font-mono" style={{
+          background: falStatus?.configured ? "oklch(0.65 0.20 145 / 0.15)" : "oklch(0.30 0.01 240)",
+          color: falStatus?.configured ? "oklch(0.65 0.20 145)" : "oklch(0.55 0.01 240)",
+          border: `1px solid ${falStatus?.configured ? "oklch(0.65 0.20 145 / 0.30)" : "oklch(0.30 0.01 240)"}`
+        }}>
+          {falStatus?.configured ? "✓ 已配置" : "未配置"}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Input
+            type={showKey ? "text" : "password"}
+            value={falKey}
+            onChange={e => { setFalKey(e.target.value); setIsDirty(true); }}
+            placeholder={falStatus?.configured ? "已配置，输入新 Key 可更新" : "输入 fal.ai API Key"}
+            style={{ background: "oklch(0.14 0.005 240)", border: "1px solid oklch(0.28 0.008 240)", color: "oklch(0.88 0.005 60)", fontFamily: "'JetBrains Mono', monospace", fontSize: 13, paddingRight: 36 }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey(!showKey)}
+            className="absolute right-2 top-1/2 -translate-y-1/2"
+            style={{ color: "oklch(0.50 0.01 240)" }}
+          >
+            <Key size={14} />
+          </button>
+        </div>
+        <Button
+          onClick={handleSave}
+          disabled={!isDirty || !falKey || saveFalKey.isPending}
+          style={{ background: isDirty && falKey ? "oklch(0.75 0.17 65)" : "oklch(0.25 0.008 240)", color: isDirty && falKey ? "oklch(0.1 0.005 240)" : "oklch(0.45 0.01 240)", fontWeight: 600, gap: 6 }}
+        >
+          {saveFalKey.isPending ? <Loader2 size={14} className="animate-spin" /> : <Settings size={14} />}
+          保存
+        </Button>
+      </div>
+      <div className="flex items-start gap-2 px-3 py-2 rounded-lg" style={{ background: "oklch(0.75 0.17 65 / 0.06)", border: "1px solid oklch(0.75 0.17 65 / 0.15)" }}>
+        <Info size={12} style={{ color: "oklch(0.75 0.17 65)", marginTop: 1, flexShrink: 0 }} />
+        <p className="text-xs leading-relaxed" style={{ color: "oklch(0.65 0.01 240)" }}>
+          在{" "}
+          <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "oklch(0.65 0.15 200)" }}>fal.ai/dashboard/keys</a>
+          {" "}获取免费 API Key，配置后可在出海短剧工作流中使用 Seedance 1.5 生成视频。
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function ApiSettingsPage() {
   const { data, isLoading, refetch } = trpc.apiSettings.get.useQuery();
   const saveMutation = trpc.apiSettings.save.useMutation();
@@ -351,6 +428,9 @@ export default function ApiSettingsPage() {
             {saveMutation.isPending ? "保存中..." : isDirty ? "保存设置" : "已保存"}
           </Button>
         </div>
+
+        {/* Fal.ai 视频生成配置 */}
+        <FalApiKeyCard />
 
         {/* 说明区域 */}
         <div className="rounded-xl p-4 space-y-3" style={{ background: "oklch(0.16 0.006 240)", border: "1px solid oklch(0.25 0.008 240)" }}>

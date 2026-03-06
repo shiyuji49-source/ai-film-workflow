@@ -125,3 +125,6 @@
 - [x] Dashboard 添加「出海短剧」入口按钮（/overseas 路由）
 - [x] 出海短剧工作流：添加人物/场景/道具资产管理板块（MJ 图上传 + Nano Banana Pro 生成参考图）
 - [x] 出海短剧工作流：分镜首尾帧生成时支持引用资产图（人物+场景参考，保证角色一致性）
+- [x] 出海短剧：Excel 剧本导入（解析 EP Shooting Script 格式，Shot#/Scene/Visual Description/Dialogue 列，直接生成分镜卡片）
+- [x] 出海短剧：批量生成首帧（一键串行生成本集所有未完成首帧，实时进度显示）
+- [x] 出海短剧：Fal.ai API Key 配置（AI 设置页面添加，激活 Seedance 1.5 视频生成）

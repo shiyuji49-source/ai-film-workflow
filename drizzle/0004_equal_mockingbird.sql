@@ -1,0 +1,1 @@
+ALTER TABLE `api_settings` ADD `falApiKey` text;
