@@ -296,3 +296,36 @@ export const videoJobs = mysqlTable("video_jobs", {
 
 export type VideoJob = typeof videoJobs.$inferSelect;
 export type InsertVideoJob = typeof videoJobs.$inferInsert;
+
+// ─── 出海短剧资产表 ────────────────────────────────────────────────────────────
+export const overseasAssets = mysqlTable("overseas_assets", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  userId: int("userId").notNull(),
+  /** 资产类型：character / scene / prop */
+  type: mysqlEnum("type", ["character", "scene", "prop"]).default("character").notNull(),
+  /** 资产名称 */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** 描述 */
+  description: text("description"),
+  /** MJ 提示词 */
+  mjPrompt: text("mjPrompt"),
+  /** Nano Banana Pro 提示词（隐藏，系统自动生成） */
+  nbpPrompt: text("nbpPrompt"),
+  /** 用户上传的 MJ 参考图 URL */
+  mjImageUrl: text("mjImageUrl"),
+  /** NBP 生成的主图 URL（人物 9:16，场景/道具跟随项目画幅） */
+  mainImageUrl: text("mainImageUrl"),
+  /** 人物三视图：正视 */
+  viewFrontUrl: text("viewFrontUrl"),
+  /** 人物三视图：侧视 */
+  viewSideUrl: text("viewSideUrl"),
+  /** 人物三视图：背视 */
+  viewBackUrl: text("viewBackUrl"),
+  /** 标签（逗号分隔，用于搜索） */
+  tags: varchar("tags", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type OverseasAsset = typeof overseasAssets.$inferSelect;
+export type InsertOverseasAsset = typeof overseasAssets.$inferInsert;

@@ -8,6 +8,10 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { registerStripeWebhook } from "../routers/stripeWebhook";
+import multer from "multer";
+import { storagePut } from "../storage";
+import { nanoid } from "nanoid";
+import { sdk } from "./sdk";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -41,6 +45,35 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+
+  // ── Asset image upload endpoint ─────────────────────────────────────────────
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 16 * 1024 * 1024 } });
+  app.post("/api/upload-asset", upload.single("file"), async (req: any, res: any) => {
+    try {
+      // Verify session
+      let user;
+      try {
+        user = await sdk.authenticateRequest(req);
+      } catch {
+        user = null;
+      }
+      if (!user) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: "No file uploaded" });
+        return;
+      }
+      const ext = req.file.originalname.split(".").pop() || "jpg";
+      const key = `overseas-mj/${user.id}/${nanoid(10)}.${ext}`;
+      const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
+      res.json({ url });
+    } catch (err) {
+      console.error("[upload-asset]", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
 
   // ── Image download proxy (bypasses CORS for S3 assets) ──────────────────────
   app.get("/api/download-proxy", async (req, res) => {

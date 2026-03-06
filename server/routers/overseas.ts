@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { overseasProjects, scriptShots, videoJobs } from "../../drizzle/schema";
+import { overseasProjects, scriptShots, videoJobs, overseasAssets } from "../../drizzle/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { invokeLLM } from "../_core/llm";
 import { generateImage } from "../_core/imageGeneration";
@@ -647,5 +647,180 @@ Return ONLY the prompt, no explanation.`,
         .delete(scriptShots)
         .where(and(eq(scriptShots.id, input.id), eq(scriptShots.userId, ctx.user.id)));
       return { success: true };
+    }),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 资产管理（人物 / 场景 / 道具）
+  // ══════════════════════════════════════════════════════════════════════════
+
+  listAssets: protectedProcedure
+    .input(z.object({
+      projectId: z.number().int(),
+      type: z.enum(["character", "scene", "prop"]).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      const conditions: ReturnType<typeof eq>[] = [
+        eq(overseasAssets.projectId, input.projectId),
+        eq(overseasAssets.userId, ctx.user.id),
+      ];
+      if (input.type) conditions.push(eq(overseasAssets.type, input.type));
+      return db!.select().from(overseasAssets).where(and(...conditions)).orderBy(desc(overseasAssets.createdAt));
+    }),
+
+  createAsset: protectedProcedure
+    .input(z.object({
+      projectId: z.number().int(),
+      type: z.enum(["character", "scene", "prop"]),
+      name: z.string().min(1).max(255),
+      description: z.string().optional(),
+      tags: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      const [result] = await db!.insert(overseasAssets).values({
+        projectId: input.projectId,
+        userId: ctx.user.id,
+        type: input.type,
+        name: input.name,
+        description: input.description,
+        tags: input.tags,
+      });
+      const insertId = (result as any).insertId as number;
+      const [asset] = await db!.select().from(overseasAssets).where(eq(overseasAssets.id, insertId));
+      return asset;
+    }),
+
+  updateAsset: protectedProcedure
+    .input(z.object({
+      id: z.number().int(),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      mjPrompt: z.string().optional(),
+      mjImageUrl: z.string().optional(),
+      mainImageUrl: z.string().optional(),
+      viewFrontUrl: z.string().optional(),
+      viewSideUrl: z.string().optional(),
+      viewBackUrl: z.string().optional(),
+      tags: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...rest } = input;
+      const db = await getDb();
+      await db!.update(overseasAssets).set(rest).where(
+        and(eq(overseasAssets.id, id), eq(overseasAssets.userId, ctx.user.id))
+      );
+      const [asset] = await db!.select().from(overseasAssets).where(eq(overseasAssets.id, id));
+      return asset;
+    }),
+
+  deleteAsset: protectedProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      await (await getDb())!.delete(overseasAssets).where(
+        and(eq(overseasAssets.id, input.id), eq(overseasAssets.userId, ctx.user.id))
+      );
+      return { success: true };
+    }),
+
+  generateAssetMjPrompt: protectedProcedure
+    .input(z.object({
+      assetId: z.number().int(),
+      projectId: z.number().int(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      const [asset] = await db!.select().from(overseasAssets).where(
+        and(eq(overseasAssets.id, input.assetId), eq(overseasAssets.userId, ctx.user.id))
+      );
+      if (!asset) throw new Error("Asset not found");
+      const [project] = await db!.select().from(overseasProjects).where(
+        and(eq(overseasProjects.id, input.projectId), eq(overseasProjects.userId, ctx.user.id))
+      );
+      if (!project) throw new Error("Project not found");
+
+      const styleMap: Record<string, string> = {
+        realistic: "photorealistic, cinematic, real human, 8K",
+        animation: "2D animation style, cel-shaded, vibrant colors",
+        cg: "3D CGI render, Unreal Engine, hyper-detailed",
+      };
+      const styleKw = styleMap[project.style] ?? "photorealistic";
+      const aspectNote = project.aspectRatio === "portrait" ? "portrait 9:16" : "landscape 16:9";
+
+      const typePrompts: Record<string, string> = {
+        character: `Generate a Midjourney v7 prompt for a character reference sheet. Character: "${asset.name}". Description: ${asset.description ?? "(none)"}. Style: ${styleKw}. Format: ${aspectNote} full-body, front view, clean background, no text, no watermark.`,
+        scene: `Generate a Midjourney v7 prompt for a scene/location reference. Scene: "${asset.name}". Description: ${asset.description ?? "(none)"}. Style: ${styleKw}. Format: ${aspectNote} establishing shot, cinematic, no text, no watermark.`,
+        prop: `Generate a Midjourney v7 prompt for a prop/object reference. Prop: "${asset.name}". Description: ${asset.description ?? "(none)"}. Style: ${styleKw}. Format: ${aspectNote} product shot, clean background, no text, no watermark.`,
+      };
+
+      const res = await invokeLLM({
+        messages: [
+          { role: "system", content: "You are a professional Midjourney prompt engineer. Output ONLY the raw prompt text, no explanation, no quotes, no markdown." },
+          { role: "user", content: typePrompts[asset.type] },
+        ],
+      });
+      const rawContent = res.choices[0]?.message?.content;
+      const mjPrompt = (typeof rawContent === "string" ? rawContent : "").trim();
+      await db!.update(overseasAssets).set({ mjPrompt }).where(eq(overseasAssets.id, asset.id));
+      return { mjPrompt };
+    }),
+
+  generateAssetImage: protectedProcedure
+    .input(z.object({
+      assetId: z.number().int(),
+      projectId: z.number().int(),
+      viewType: z.enum(["main", "front", "side", "back"]).default("main"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      const [asset] = await db!.select().from(overseasAssets).where(
+        and(eq(overseasAssets.id, input.assetId), eq(overseasAssets.userId, ctx.user.id))
+      );
+      if (!asset) throw new Error("Asset not found");
+      if (!asset.mjImageUrl) throw new Error("Please upload MJ reference image first");
+
+      const [project] = await db!.select().from(overseasProjects).where(
+        and(eq(overseasProjects.id, input.projectId), eq(overseasProjects.userId, ctx.user.id))
+      );
+      if (!project) throw new Error("Project not found");
+
+      const styleMap: Record<string, string> = {
+        realistic: "photorealistic, cinematic, real human, 8K, film grain",
+        animation: "2D animation, cel-shaded, clean lines, vibrant",
+        cg: "3D CGI, Unreal Engine 5, hyper-detailed",
+      };
+      const styleKw = styleMap[project.style] ?? "photorealistic";
+      const isPortrait = project.aspectRatio === "portrait";
+
+      const viewLabels: Record<string, string> = {
+        main: asset.type === "character" ? "full body, front facing, character reference" : (isPortrait ? "portrait composition" : "wide establishing shot"),
+        front: "front view, full body",
+        side: "side profile view, full body",
+        back: "back view, full body",
+      };
+
+      const prompt = `${asset.name}, ${asset.description ?? ""}, ${viewLabels[input.viewType]}, ${styleKw}, no background music, no subtitles, no text, no watermark`;
+
+      const { url: imageUrl } = await generateImage({
+        prompt,
+        originalImages: [{ url: asset.mjImageUrl, mimeType: "image/jpeg" }],
+      });
+
+      const resp = await fetch(imageUrl as string);
+      const buf = Buffer.from(await resp.arrayBuffer());
+      const key = `overseas-assets/${ctx.user.id}/${asset.id}-${input.viewType}-${nanoid(6)}.jpg`;
+      const { url: s3Url } = await storagePut(key, buf, "image/jpeg");
+
+      const fieldMap: Record<string, string> = {
+        main: "mainImageUrl",
+        front: "viewFrontUrl",
+        side: "viewSideUrl",
+        back: "viewBackUrl",
+      };
+      await db!.update(overseasAssets)
+        .set({ [fieldMap[input.viewType]]: s3Url })
+        .where(eq(overseasAssets.id, asset.id));
+
+      return { url: s3Url, viewType: input.viewType };
     }),
 });

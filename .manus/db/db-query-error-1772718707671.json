@@ -1,0 +1,12 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS overseas_assets (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  project_id INT NOT NULL,\n  type ENUM('character', 'scene', 'prop') NOT NULL DEFAULT 'character',\n  name VARCHAR(255) NOT NULL,\n  description TEXT,\n  mj_prompt TEXT,\n  nbp_prompt TEXT,\n  mj_image_url TEXT,\n  main_image_url TEXT,\n  view_front_url TEXT,\n  view_side_url TEXT,\n  view_back_url TEXT,\n  tags VARCHAR(500),\n  created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP() * 1000),\n  updated_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP() * 1000),\n  INDEX idx_project_id (project_id),\n  INDEX idx_type (type)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2czPSYTDE19cKes.root --database 9BgyFdoC3HjLKXJmyAaqgB --execute \nCREATE TABLE IF NOT EXISTS overseas_assets (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  project_id INT NOT NULL,\n  type ENUM('character', 'scene', 'prop') NOT NULL DEFAULT 'character',\n  name VARCHAR(255) NOT NULL,\n  description TEXT,\n  mj_prompt TEXT,\n  nbp_prompt TEXT,\n  mj_image_url TEXT,\n  main_image_url TEXT,\n  view_front_url TEXT,\n  view_side_url TEXT,\n  view_back_url TEXT,\n  tags VARCHAR(500),\n  created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP() * 1000),\n  updated_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP() * 1000),\n  INDEX idx_project_id (project_id),\n  INDEX idx_type (type)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 2: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 15 column 57 near \"* 1000),",
+    "  updated_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP() * 1000),",
+    "  INDEX idx_project_id (project_id),",
+    "  INDEX idx_type (type)",
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4\""
+  ]
+}
