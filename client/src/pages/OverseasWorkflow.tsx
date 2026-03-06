@@ -399,7 +399,7 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
   const [parsingScript, setParsingScript] = useState(false);
   const [expandedShot, setExpandedShot] = useState<number | null>(null);
   const [showScriptInput, setShowScriptInput] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<"shots" | "assets">("shots");
+  const [stage, setStage] = useState<"script" | "assets" | "production">("script");
   const [importingExcel, setImportingExcel] = useState(false);
   const excelInputRef = useRef<HTMLInputElement>(null);
   // 批量生成首帧状态
@@ -560,25 +560,31 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
 
       {/* 主内容区 */}
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-        {/* Tab 切换 */}
+        {/* 三阶段导航 */}
         <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.border}`, padding: "0 1.5rem", background: C.surface, flexShrink: 0 }}>
-          {(["shots", "assets"] as const).map(tab => (
+          {([
+            { key: "script", label: "① 剧本拆解", icon: <Film size={14} /> },
+            { key: "assets", label: "② 资产提示词", icon: <Layers size={14} /> },
+            { key: "production", label: "③ 制作", icon: <Video size={14} /> },
+          ] as const).map(tab => (
             <button
-              key={tab}
-              onClick={() => setWorkspaceTab(tab)}
+              key={tab.key}
+              onClick={() => setStage(tab.key)}
               style={{
                 padding: "12px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
                 background: "transparent", border: "none",
-                borderBottom: `2px solid ${workspaceTab === tab ? C.amber : "transparent"}`,
-                color: workspaceTab === tab ? C.amber : C.muted,
+                borderBottom: `2px solid ${stage === tab.key ? C.amber : "transparent"}`,
+                color: stage === tab.key ? C.amber : C.muted,
                 display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s",
               }}
             >
-              {tab === "shots" ? <><Film size={14} /> 分镜</> : <><Layers size={14} /> 资产库</>}
+              {tab.icon} {tab.label}
             </button>
           ))}
         </div>
-        {workspaceTab === "shots" ? (
+
+        {/* 阶段一：剧本拆解 */}
+        {stage === "script" && (
         <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
         {/* 集头部 */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
@@ -616,38 +622,13 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
             >
               <Upload size={13} /> {episodeShots.length > 0 ? "重新解析剧本" : "AI 解析剧本"}
             </Button>
-            {/* 批量生成首帧按鈕 */}
+            {/* 导入完成后跳转制作阶段 */}
             {episodeShots.length > 0 && (
               <Button
-                onClick={() => handleBatchGenerateFrames(episodeShots)}
-                disabled={batchGenerating || batchPromptGenerating}
-                style={{ background: batchGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, fontSize: 12, gap: 6, fontWeight: 600 }}
+                onClick={() => setStage("production")}
+                style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 12, gap: 6 }}
               >
-                {batchGenerating
-                  ? <><Loader2 className="animate-spin w-3 h-3" /> 首帧 {batchProgress.done}/{batchProgress.total}</>
-                  : <><Zap size={13} /> 一键生成全部首帧</>}
-              </Button>
-            )}
-            {/* 批量生成视频提示词按鈕 */}
-            {episodeShots.length > 0 && (
-              <Button
-                onClick={() => handleBatchGenerateVideoPrompts(episodeShots)}
-                disabled={batchPromptGenerating || batchGenerating}
-                style={{ background: batchPromptGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", fontSize: 12, gap: 6, fontWeight: 600 }}
-              >
-                {batchPromptGenerating
-                  ? <><Loader2 className="animate-spin w-3 h-3" /> 提示词 {batchPromptProgress.done}/{batchPromptProgress.total}</>
-                  : <><MessageSquare size={13} /> 一键生成视频提示词</>}
-              </Button>
-            )}
-            {/* 多选模式切换按鈕 */}
-            {episodeShots.length > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => { setSelectMode(!selectMode); setSelectedShotIds(new Set()); }}
-                style={{ borderColor: selectMode ? "oklch(0.65 0.20 145)" : C.border, color: selectMode ? "oklch(0.65 0.20 145)" : C.muted, fontSize: 12, gap: 6, background: selectMode ? "oklch(0.65 0.20 145 / 0.10)" : "transparent" }}
-              >
-                <CheckSquare size={13} /> {selectMode ? `已选 ${selectedShotIds.size}` : "多选"}
+                <Video size={13} /> 进入制作阶段 →
               </Button>
             )}
           </div>
@@ -808,9 +789,155 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
           ))}
         </div>
         </div>
-        ) : (
+        )}
+
+        {/* 阶段二：资产提示词 */}
+        {stage === "assets" && (
           <div style={{ flex: 1, overflowY: "auto" }}>
             <OverseasAssetPanel projectId={projectId} project={project as OverseasProject} />
+          </div>
+        )}
+
+        {/* 阶段三：制作页面（左侧资产上传 + 右侧分镜） */}
+        {stage === "production" && (
+          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+            {/* 左侧：资产图上传区 */}
+            <div style={{ width: 280, borderRight: `1px solid ${C.border}`, overflowY: "auto", padding: 16, flexShrink: 0, background: "oklch(0.12 0.005 240)" }}>
+              <div style={{ marginBottom: 12 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4, fontFamily: "'Space Grotesk', sans-serif" }}>资产图库</h3>
+                <p style={{ fontSize: 11, color: C.muted }}>MJ 生成后上传人物/场景图，生成首尾帧时作为参考</p>
+              </div>
+              <OverseasAssetPanel projectId={projectId} project={project as OverseasProject} compact />
+            </div>
+            {/* 右侧：分镜制作列表 */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
+              {/* 集头部工具栏 */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", color: C.text, marginBottom: 2 }}>
+                    第 {activeEpisode} 集制作
+                  </h2>
+                  <p style={{ fontSize: 12, color: C.muted }}>
+                    {episodeShots.length} 个镜头 · {frameCount} 帧已生成 · {doneCount} 视频完成
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {episodeShots.length > 0 && (
+                    <Button
+                      onClick={() => handleBatchGenerateFrames(episodeShots)}
+                      disabled={batchGenerating || batchPromptGenerating}
+                      style={{ background: batchGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, fontSize: 12, gap: 6, fontWeight: 600 }}
+                    >
+                      {batchGenerating
+                        ? <><Loader2 className="animate-spin w-3 h-3" /> 首帧 {batchProgress.done}/{batchProgress.total}</>
+                        : <><Zap size={13} /> 一键生成全部首帧</>}
+                    </Button>
+                  )}
+                  {episodeShots.length > 0 && (
+                    <Button
+                      onClick={() => handleBatchGenerateVideoPrompts(episodeShots)}
+                      disabled={batchPromptGenerating || batchGenerating}
+                      style={{ background: batchPromptGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", fontSize: 12, gap: 6, fontWeight: 600 }}
+                    >
+                      {batchPromptGenerating
+                        ? <><Loader2 className="animate-spin w-3 h-3" /> 提示词 {batchPromptProgress.done}/{batchPromptProgress.total}</>
+                        : <><MessageSquare size={13} /> 一键生成视频提示词</>}
+                    </Button>
+                  )}
+                  {episodeShots.length > 0 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => { setSelectMode(!selectMode); setSelectedShotIds(new Set()); }}
+                      style={{ borderColor: selectMode ? "oklch(0.65 0.20 145)" : C.border, color: selectMode ? "oklch(0.65 0.20 145)" : C.muted, fontSize: 12, gap: 6, background: selectMode ? "oklch(0.65 0.20 145 / 0.10)" : "transparent" }}
+                    >
+                      <CheckSquare size={13} /> {selectMode ? `已选 ${selectedShotIds.size}` : "多选"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {episodeShots.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "4rem 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
+                  <Film size={40} style={{ color: C.muted, margin: "0 auto 16px" }} />
+                  <p style={{ color: C.muted, marginBottom: 8 }}>第 {activeEpisode} 集还没有分镜</p>
+                  <p style={{ fontSize: 12, color: "oklch(0.40 0.01 240)", marginBottom: 20 }}>请先在「剧本拆解」阶段导入并解析剧本</p>
+                  <Button onClick={() => setStage("script")} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, gap: 6 }}>
+                    <Film size={14} /> 去导入剧本
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  {/* 多选操作面板 */}
+                  {selectMode && (
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12, padding: "10px 14px", background: "oklch(0.65 0.20 145 / 0.08)", border: `1px solid oklch(0.65 0.20 145 / 0.30)`, borderRadius: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => {
+                          if (selectedShotIds.size === episodeShots.length) {
+                            setSelectedShotIds(new Set());
+                          } else {
+                            setSelectedShotIds(new Set(episodeShots.map(s => s.id)));
+                          }
+                        }}
+                        style={{ fontSize: 12, color: "oklch(0.65 0.20 145)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
+                      >
+                        {selectedShotIds.size === episodeShots.length ? "取消全选" : "全选"}
+                      </button>
+                      <span style={{ fontSize: 12, color: "oklch(0.55 0.01 240)" }}>已选 {selectedShotIds.size} / {episodeShots.length} 个镜头</span>
+                      <div style={{ flex: 1 }} />
+                      {batchActionRunning ? (
+                        <span style={{ fontSize: 12, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
+                          <Loader2 size={12} className="animate-spin" />
+                          批量{batchActionProgress.action} {batchActionProgress.done}/{batchActionProgress.total}
+                        </span>
+                      ) : (
+                        <>
+                          <Button onClick={() => handleBatchAction("first", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, gap: 4 }}>
+                            <ImageIcon size={11} /> 生成首帧
+                          </Button>
+                          <Button onClick={() => handleBatchAction("last", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.08)", border: `1px solid oklch(0.75 0.17 65 / 0.5)`, color: "oklch(0.75 0.17 65 / 0.8)", gap: 4 }}>
+                            <ImageIcon size={11} /> 生成尾帧
+                          </Button>
+                          <Button onClick={() => handleBatchAction("prompt", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", gap: 4 }}>
+                            <MessageSquare size={11} /> 生成视频提示词
+                          </Button>
+                          <Button onClick={() => { setSelectMode(false); setSelectedShotIds(new Set()); }} variant="outline" style={{ fontSize: 11, padding: "4px 10px", borderColor: C.border, color: C.muted }}>
+                            <X size={11} /> 取消多选
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {/* 分镜列表 */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {episodeShots.map((shot) => (
+                      <div key={shot.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        {selectMode && (
+                          <button
+                            onClick={() => {
+                              const next = new Set(selectedShotIds);
+                              if (next.has(shot.id)) next.delete(shot.id); else next.add(shot.id);
+                              setSelectedShotIds(next);
+                            }}
+                            style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : C.border}`, background: selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : "transparent", cursor: "pointer", flexShrink: 0, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
+                          >
+                            {selectedShotIds.has(shot.id) && <Check size={12} style={{ color: "oklch(0.1 0.005 240)" }} />}
+                          </button>
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <ShotCard
+                            shot={shot}
+                            project={project as OverseasProject}
+                            expanded={expandedShot === shot.id}
+                            onToggle={() => setExpandedShot(expandedShot === shot.id ? null : shot.id)}
+                            onRefresh={refetch}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1273,7 +1400,7 @@ function FramePanel({ label, url, prompt, aspectRatio, generating, onGenerate }:
 
 // ─── 出海短剧资产管理面板 ──────────────────────────────────────────────────────
 
-function OverseasAssetPanel({ projectId, project }: { projectId: number; project: OverseasProject }) {
+function OverseasAssetPanel({ projectId, project, compact }: { projectId: number; project: OverseasProject; compact?: boolean }) {
   const [assetTab, setAssetTab] = useState<"character" | "scene" | "prop">("character");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newName, setNewName] = useState("");
@@ -1299,7 +1426,7 @@ function OverseasAssetPanel({ projectId, project }: { projectId: number; project
   ];
 
   return (
-    <div style={{ padding: "1.5rem" }}>
+    <div style={{ padding: compact ? "0.75rem" : "1.5rem" }}>
       {/* 资产类型 Tab */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 4 }}>
