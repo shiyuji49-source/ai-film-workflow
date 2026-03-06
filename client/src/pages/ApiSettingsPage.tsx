@@ -109,6 +109,56 @@ function FalApiKeyCard() {
   );
 }
 
+// Veo 3.1 配置状态卡片
+function Veo31StatusCard() {
+  const { data: apiData } = trpc.apiSettings.get.useQuery();
+  const isGeminiConfigured = apiData?.setting?.provider === "gemini" && !!apiData?.setting?.apiKey;
+  const isGeminiProvider = apiData?.setting?.provider === "gemini";
+
+  return (
+    <div className="rounded-xl p-4 space-y-3" style={{ background: "oklch(0.16 0.006 240)", border: "1px solid oklch(0.25 0.008 240)" }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base">⚡</span>
+          <div>
+            <h3 className="text-sm font-semibold" style={{ color: "oklch(0.90 0.005 60)", fontFamily: "'Space Grotesk', sans-serif" }}>Veo 3.1 视频生成</h3>
+            <p className="text-xs" style={{ color: "oklch(0.55 0.01 240)" }}>Google Veo 3.1 首尾帧模式（出海短剧工作流）</p>
+          </div>
+        </div>
+        <span className="text-xs px-2 py-1 rounded font-mono" style={{
+          background: isGeminiConfigured ? "oklch(0.65 0.20 145 / 0.15)" : "oklch(0.30 0.01 240)",
+          color: isGeminiConfigured ? "oklch(0.65 0.20 145)" : "oklch(0.55 0.01 240)",
+          border: `1px solid ${isGeminiConfigured ? "oklch(0.65 0.20 145 / 0.30)" : "oklch(0.30 0.01 240)"}`
+        }}>
+          {isGeminiConfigured ? "✓ 已配置" : "未配置"}
+        </span>
+      </div>
+      <div className="flex items-start gap-2 px-3 py-2 rounded-lg" style={{ background: isGeminiConfigured ? "oklch(0.65 0.20 145 / 0.06)" : "oklch(0.75 0.17 65 / 0.06)", border: `1px solid ${isGeminiConfigured ? "oklch(0.65 0.20 145 / 0.15)" : "oklch(0.75 0.17 65 / 0.15)"}` }}>
+        <Info size={12} style={{ color: isGeminiConfigured ? "oklch(0.65 0.20 145)" : "oklch(0.75 0.17 65)", marginTop: 1, flexShrink: 0 }} />
+        <p className="text-xs leading-relaxed" style={{ color: "oklch(0.65 0.01 240)" }}>
+          {isGeminiConfigured
+            ? `Veo 3.1 已就绪，当前使用 Gemini 提供商的 API Key。在出海短剧工作流视频生成面板中选择「Veo 3.1」即可使用。`
+            : isGeminiProvider
+              ? `当前已选择 Gemini 提供商，但还未配置 API Key。请在上方输入 Gemini API Key 并保存。`
+              : `Veo 3.1 需要 Gemini API Key。请在上方将提供商切换为「Google Gemini」并配置 API Key。`
+          }
+        </p>
+      </div>
+      {!isGeminiConfigured && (
+        <a
+          href="https://aistudio.google.com/apikey"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs underline block"
+          style={{ color: "oklch(0.65 0.15 200)" }}
+        >
+          在 Google AI Studio 获取免费 Gemini API Key →
+        </a>
+      )}
+    </div>
+  );
+}
+
 export default function ApiSettingsPage() {
   const { data, isLoading, refetch } = trpc.apiSettings.get.useQuery();
   const saveMutation = trpc.apiSettings.save.useMutation();
@@ -431,6 +481,8 @@ export default function ApiSettingsPage() {
 
         {/* Fal.ai 视频生成配置 */}
         <FalApiKeyCard />
+        {/* Veo 3.1 配置状态 */}
+        <Veo31StatusCard />
 
         {/* 说明区域 */}
         <div className="rounded-xl p-4 space-y-3" style={{ background: "oklch(0.16 0.006 240)", border: "1px solid oklch(0.25 0.008 240)" }}>

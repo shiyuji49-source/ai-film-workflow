@@ -128,3 +128,6 @@
 - [x] 出海短剧：Excel 剧本导入（解析 EP Shooting Script 格式，Shot#/Scene/Visual Description/Dialogue 列，直接生成分镜卡片）
 - [x] 出海短剧：批量生成首帧（一键串行生成本集所有未完成首帧，实时进度显示）
 - [x] 出海短剧：Fal.ai API Key 配置（AI 设置页面添加，激活 Seedance 1.5 视频生成）
+- [x] 出海短剧：批量生成视频提示词（集视图顶部按鈕，串行为有首帧但无 videoPrompt 的镜头生成，实时进度）
+- [x] 出海短剧：Veo 3.1 配置入口（AI 设置页面显示 Gemini Key 配置状态，视频生成面板显示当前引擎 Key 状态提示）
+- [x] 出海短剧：分镜卡片多选模式（多选框 + 批量操作面板：批量生成首帧/尾帧/视频提示词/视频）

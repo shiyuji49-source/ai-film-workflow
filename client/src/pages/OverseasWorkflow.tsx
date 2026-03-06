@@ -10,7 +10,7 @@ import {
   Wand2, ImageIcon, Video, Upload, Edit3, Check, X,
   Loader2, Globe, Clapperboard, ArrowLeft, RefreshCw,
   Copy, Download, Play, AlertCircle, Sparkles,
-  Users, MapPin, Package, Layers, FileSpreadsheet, Zap
+  Users, MapPin, Package, Layers, FileSpreadsheet, Zap, MessageSquare, CheckSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -405,6 +405,14 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
   // 批量生成首帧状态
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  // 批量生成视频提示词状态
+  const [batchPromptGenerating, setBatchPromptGenerating] = useState(false);
+  const [batchPromptProgress, setBatchPromptProgress] = useState({ done: 0, total: 0 });
+  // 多选模式状态
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedShotIds, setSelectedShotIds] = useState<Set<number>>(new Set());
+  const [batchActionRunning, setBatchActionRunning] = useState(false);
+  const [batchActionProgress, setBatchActionProgress] = useState({ done: 0, total: 0, action: "" });
 
   const parseScript = trpc.overseas.parseScript.useMutation({
     onSuccess: (result) => {
@@ -436,6 +444,54 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
       importExcel.mutate({ projectId, episodeNumber: activeEpisode, fileBase64: base64 });
     };
     reader.readAsDataURL(file);
+  };
+
+  const generateVideoPrompt = trpc.overseas.generateVideoPrompt.useMutation();
+
+  const handleBatchGenerateVideoPrompts = async (shots: ScriptShot[]) => {
+    const pending = shots.filter(s => s.firstFrameUrl && !s.videoPrompt);
+    if (pending.length === 0) {
+      toast.success("本集所有有首帧的镜头均已有视频提示词");
+      return;
+    }
+    setBatchPromptGenerating(true);
+    setBatchPromptProgress({ done: 0, total: pending.length });
+    for (let i = 0; i < pending.length; i++) {
+      try {
+        await generateVideoPrompt.mutateAsync({ shotId: pending[i].id });
+        setBatchPromptProgress({ done: i + 1, total: pending.length });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error(`镜头 ${pending[i].shotNumber} 提示词生成失败: ${msg}`);
+      }
+    }
+    setBatchPromptGenerating(false);
+    refetch();
+    toast.success(`批量生成完成！共处理 ${pending.length} 个镜头`);
+  };
+
+  const handleBatchAction = async (action: "first" | "last" | "prompt", shots: ScriptShot[]) => {
+    const selectedShots = shots.filter(s => selectedShotIds.has(s.id));
+    if (selectedShots.length === 0) { toast.error("请先选择镜头"); return; }
+    const actionLabel = action === "first" ? "首帧" : action === "last" ? "尾帧" : "视频提示词";
+    setBatchActionRunning(true);
+    setBatchActionProgress({ done: 0, total: selectedShots.length, action: actionLabel });
+    for (let i = 0; i < selectedShots.length; i++) {
+      try {
+        if (action === "first" || action === "last") {
+          await generateFrame.mutateAsync({ shotId: selectedShots[i].id, frameType: action });
+        } else {
+          await generateVideoPrompt.mutateAsync({ shotId: selectedShots[i].id });
+        }
+        setBatchActionProgress({ done: i + 1, total: selectedShots.length, action: actionLabel });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error(`镜头 ${selectedShots[i].shotNumber} 失败: ${msg}`);
+      }
+    }
+    setBatchActionRunning(false);
+    refetch();
+    toast.success(`批量${actionLabel}生成完成！`);
   };
 
   const handleBatchGenerateFrames = async (shots: ScriptShot[]) => {
@@ -564,12 +620,34 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
             {episodeShots.length > 0 && (
               <Button
                 onClick={() => handleBatchGenerateFrames(episodeShots)}
-                disabled={batchGenerating}
+                disabled={batchGenerating || batchPromptGenerating}
                 style={{ background: batchGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, fontSize: 12, gap: 6, fontWeight: 600 }}
               >
                 {batchGenerating
-                  ? <><Loader2 className="animate-spin w-3 h-3" /> 生成中 {batchProgress.done}/{batchProgress.total}</>
+                  ? <><Loader2 className="animate-spin w-3 h-3" /> 首帧 {batchProgress.done}/{batchProgress.total}</>
                   : <><Zap size={13} /> 一键生成全部首帧</>}
+              </Button>
+            )}
+            {/* 批量生成视频提示词按鈕 */}
+            {episodeShots.length > 0 && (
+              <Button
+                onClick={() => handleBatchGenerateVideoPrompts(episodeShots)}
+                disabled={batchPromptGenerating || batchGenerating}
+                style={{ background: batchPromptGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", fontSize: 12, gap: 6, fontWeight: 600 }}
+              >
+                {batchPromptGenerating
+                  ? <><Loader2 className="animate-spin w-3 h-3" /> 提示词 {batchPromptProgress.done}/{batchPromptProgress.total}</>
+                  : <><MessageSquare size={13} /> 一键生成视频提示词</>}
+              </Button>
+            )}
+            {/* 多选模式切换按鈕 */}
+            {episodeShots.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => { setSelectMode(!selectMode); setSelectedShotIds(new Set()); }}
+                style={{ borderColor: selectMode ? "oklch(0.65 0.20 145)" : C.border, color: selectMode ? "oklch(0.65 0.20 145)" : C.muted, fontSize: 12, gap: 6, background: selectMode ? "oklch(0.65 0.20 145 / 0.10)" : "transparent" }}
+              >
+                <CheckSquare size={13} /> {selectMode ? `已选 ${selectedShotIds.size}` : "多选"}
               </Button>
             )}
           </div>
@@ -640,17 +718,93 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
           </div>
         )}
 
+        {/* 多选操作面板 */}
+        {selectMode && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, padding: "10px 14px", background: "oklch(0.65 0.20 145 / 0.08)", border: `1px solid oklch(0.65 0.20 145 / 0.30)`, borderRadius: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={() => {
+                if (selectedShotIds.size === episodeShots.length) {
+                  setSelectedShotIds(new Set());
+                } else {
+                  setSelectedShotIds(new Set(episodeShots.map(s => s.id)));
+                }
+              }}
+              style={{ fontSize: 12, color: "oklch(0.65 0.20 145)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
+            >
+              {selectedShotIds.size === episodeShots.length ? "取消全选" : "全选"}
+            </button>
+            <span style={{ fontSize: 12, color: "oklch(0.55 0.01 240)" }}>已选 {selectedShotIds.size} / {episodeShots.length} 个镜头</span>
+            <div style={{ flex: 1 }} />
+            {batchActionRunning ? (
+              <span style={{ fontSize: 12, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
+                <Loader2 size={12} className="animate-spin" />
+                批量{batchActionProgress.action} {batchActionProgress.done}/{batchActionProgress.total}
+              </span>
+            ) : (
+              <>
+                <Button
+                  onClick={() => handleBatchAction("first", episodeShots)}
+                  disabled={selectedShotIds.size === 0}
+                  style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, gap: 4 }}
+                >
+                  <ImageIcon size={11} /> 生成首帧
+                </Button>
+                <Button
+                  onClick={() => handleBatchAction("last", episodeShots)}
+                  disabled={selectedShotIds.size === 0}
+                  style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.08)", border: `1px solid oklch(0.75 0.17 65 / 0.5)`, color: "oklch(0.75 0.17 65 / 0.8)", gap: 4 }}
+                >
+                  <ImageIcon size={11} /> 生成尾帧
+                </Button>
+                <Button
+                  onClick={() => handleBatchAction("prompt", episodeShots)}
+                  disabled={selectedShotIds.size === 0}
+                  style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", gap: 4 }}
+                >
+                  <MessageSquare size={11} /> 生成视频提示词
+                </Button>
+                <Button
+                  onClick={() => { setSelectMode(false); setSelectedShotIds(new Set()); }}
+                  variant="outline"
+                  style={{ fontSize: 11, padding: "4px 10px", borderColor: C.border, color: C.muted }}
+                >
+                  <X size={11} /> 取消多选
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* 分镜列表 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {episodeShots.map((shot) => (
-            <ShotCard
-              key={shot.id}
-              shot={shot}
-              project={project as OverseasProject}
-              expanded={expandedShot === shot.id}
-              onToggle={() => setExpandedShot(expandedShot === shot.id ? null : shot.id)}
-              onRefresh={refetch}
-            />
+            <div key={shot.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              {selectMode && (
+                <button
+                  onClick={() => {
+                    const next = new Set(selectedShotIds);
+                    if (next.has(shot.id)) next.delete(shot.id); else next.add(shot.id);
+                    setSelectedShotIds(next);
+                  }}
+                  style={{
+                    width: 20, height: 20, borderRadius: 4, border: `2px solid ${selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : C.border}`,
+                    background: selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : "transparent",
+                    cursor: "pointer", flexShrink: 0, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center"
+                  }}
+                >
+                  {selectedShotIds.has(shot.id) && <Check size={12} style={{ color: "oklch(0.1 0.005 240)" }} />}
+                </button>
+              )}
+              <div style={{ flex: 1 }}>
+                <ShotCard
+                  shot={shot}
+                  project={project as OverseasProject}
+                  expanded={expandedShot === shot.id}
+                  onToggle={() => setExpandedShot(expandedShot === shot.id ? null : shot.id)}
+                  onRefresh={refetch}
+                />
+              </div>
+            </div>
           ))}
         </div>
         </div>
@@ -979,6 +1133,24 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                         </button>
                       ))}
                     </div>
+
+                    {/* 引擎 Key 状态提示 */}
+                    {videoEngine === "seedance_1_5" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 8px", borderRadius: 6, background: "oklch(0.65 0.15 200 / 0.08)", border: "1px solid oklch(0.65 0.15 200 / 0.20)" }}>
+                        <span style={{ color: "oklch(0.65 0.15 200)" }}>ℹ️</span>
+                        <span style={{ color: "oklch(0.60 0.01 240)" }}>Seedance 1.5 需要 Fal.ai API Key，在</span>
+                        <a href="/api-settings" style={{ color: "oklch(0.65 0.15 200)", textDecoration: "underline" }}>AI 设置</a>
+                        <span style={{ color: "oklch(0.60 0.01 240)" }}>中配置</span>
+                      </div>
+                    )}
+                    {videoEngine === "veo_3_1" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 8px", borderRadius: 6, background: "oklch(0.65 0.20 145 / 0.08)", border: "1px solid oklch(0.65 0.20 145 / 0.20)" }}>
+                        <span style={{ color: "oklch(0.65 0.20 145)" }}>ℹ️</span>
+                        <span style={{ color: "oklch(0.60 0.01 240)" }}>Veo 3.1 使用 Gemini API Key，在</span>
+                        <a href="/api-settings" style={{ color: "oklch(0.65 0.15 200)", textDecoration: "underline" }}>AI 设置</a>
+                        <span style={{ color: "oklch(0.60 0.01 240)" }}>中切换至 Gemini 提供商并配置</span>
+                      </div>
+                    )}
 
                     {/* 尾帧选项 */}
                     {shot.lastFrameUrl && (
