@@ -346,7 +346,7 @@ function CreateProjectDialog({ open, onClose, onCreated }: { open: boolean; onCl
               </Select>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>画幅</label>
               <Select value={form.aspectRatio} onValueChange={v => setForm(f => ({ ...f, aspectRatio: v as "portrait" | "landscape" }))}>
@@ -356,19 +356,6 @@ function CreateProjectDialog({ open, onClose, onCreated }: { open: boolean; onCl
                 <SelectContent style={{ background: C.surface, border: `1px solid ${C.border}` }}>
                   <SelectItem value="portrait" style={{ color: C.text }}>竖屏 9:16</SelectItem>
                   <SelectItem value="landscape" style={{ color: C.text }}>横屏 16:9</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>风格</label>
-              <Select value={form.style} onValueChange={v => setForm(f => ({ ...f, style: v as "realistic" | "animation" | "cg" }))}>
-                <SelectTrigger style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-                  <SelectItem value="realistic" style={{ color: C.text }}>真人写实</SelectItem>
-                  <SelectItem value="animation" style={{ color: C.text }}>动画</SelectItem>
-                  <SelectItem value="cg" style={{ color: C.text }}>CG</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -682,7 +669,7 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
           <div style={{ textAlign: "center", padding: "4rem 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
             <Film size={40} style={{ color: C.muted, margin: "0 auto 16px" }} />
             <p style={{ color: C.muted, marginBottom: 8 }}>第 {activeEpisode} 集还没有分镜</p>
-            <p style={{ fontSize: 12, color: "oklch(0.40 0.01 240)", marginBottom: 20 }}>导入剧本后，AI 将自动解析为 20-30 个镜头，每个镜头包含首尾帧生成和视频生成流程</p>
+            <p style={{ fontSize: 12, color: "oklch(0.40 0.01 240)", marginBottom: 20 }}>导入剧本后，AI 将自动拆解为对应集数的分镜文字描述，每个镜头包含场景、动作、对白等文字内容</p>
             <Button onClick={() => setShowScriptInput(true)} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, gap: 6 }}>
               <Upload size={14} /> 导入第 {activeEpisode} 集剧本
             </Button>
@@ -734,13 +721,7 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
                 >
                   <ImageIcon size={11} /> 生成首帧
                 </Button>
-                <Button
-                  onClick={() => handleBatchAction("last", episodeShots)}
-                  disabled={selectedShotIds.size === 0}
-                  style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.08)", border: `1px solid oklch(0.75 0.17 65 / 0.5)`, color: "oklch(0.75 0.17 65 / 0.8)", gap: 4 }}
-                >
-                  <ImageIcon size={11} /> 生成尾帧
-                </Button>
+
                 <Button
                   onClick={() => handleBatchAction("prompt", episodeShots)}
                   disabled={selectedShotIds.size === 0}
@@ -920,9 +901,7 @@ function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { proje
                           <Button onClick={() => handleBatchAction("first", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, gap: 4 }}>
                             <ImageIcon size={11} /> 生成首帧
                           </Button>
-                          <Button onClick={() => handleBatchAction("last", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.08)", border: `1px solid oklch(0.75 0.17 65 / 0.5)`, color: "oklch(0.75 0.17 65 / 0.8)", gap: 4 }}>
-                            <ImageIcon size={11} /> 生成尾帧
-                          </Button>
+
                           <Button onClick={() => handleBatchAction("prompt", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", gap: 4 }}>
                             <MessageSquare size={11} /> 生成视频提示词
                           </Button>
@@ -1056,7 +1035,6 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
           {/* 资产状态点 */}
           <div style={{ display: "flex", gap: 4 }}>
             <div title="首帧" style={{ width: 8, height: 8, borderRadius: "50%", background: shot.firstFrameUrl ? C.green : C.border }} />
-            <div title="尾帧" style={{ width: 8, height: 8, borderRadius: "50%", background: shot.lastFrameUrl ? C.green : C.border }} />
             <div title="视频" style={{ width: 8, height: 8, borderRadius: "50%", background: shot.videoUrl ? C.green : C.border }} />
           </div>
           <span style={{ fontSize: 11, color: statusCfg.color, fontFamily: "'JetBrains Mono', monospace" }}>{statusCfg.label}</span>
@@ -1076,7 +1054,7 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
             <div style={{ borderTop: `1px solid ${C.border}`, padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
               {/* 视觉描述 */}
               <div>
-                <label style={{ fontSize: 11, color: C.muted, marginBottom: 6, display: "block", letterSpacing: "0.05em", textTransform: "uppercase" }}>视觉描述（用于生成首尾帧）</label>
+                <label style={{ fontSize: 11, color: C.muted, marginBottom: 6, display: "block", letterSpacing: "0.05em", textTransform: "uppercase" }}>镜头视觉描述</label>
                 <p style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "10px 12px", background: "oklch(0.18 0.006 240)", borderRadius: 8 }}>
                   {shot.visualDescription || "—"}
                 </p>
@@ -1096,7 +1074,7 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                   <label style={{ fontSize: 11, color: C.muted, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                    STEP 1 — 首尾帧图片（Nano Banana Pro）
+                    STEP 1 — 首帧图片（Nano Banana Pro）
                   </label>
                   {/* 资产引用选择器 */}
                   <button
@@ -1117,7 +1095,7 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                 {/* 资产选择展开区 */}
                 {showAssetPicker && allAssets.length > 0 && (
                   <div style={{ marginBottom: 10, padding: "10px", background: "oklch(0.16 0.006 240)", borderRadius: 8, border: `1px solid ${C.border}` }}>
-                    <p style={{ fontSize: 10, color: C.muted, marginBottom: 8 }}>选择人物/场景参考图（最多 3 个），生成首尾帧时会作为参考</p>
+                    <p style={{ fontSize: 10, color: C.muted, marginBottom: 8 }}>选择人物/场景参考图（最多 3 个），生成首帧时会作为参考</p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {allAssets.map(asset => {
                         const thumbUrl = asset.mainImageUrl || asset.mjImageUrl;
@@ -1158,7 +1136,7 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                   </div>
                 )}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div style={{ maxWidth: 320 }}>
                   {/* 首帧 */}
                   <FramePanel
                     label="首帧"
@@ -1169,18 +1147,6 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                     onGenerate={() => {
                       setGeneratingFirstFrame(true);
                       generateFrame.mutate({ shotId: shot.id, frameType: "first", referenceImageUrls: selectedAssetUrls.length > 0 ? selectedAssetUrls : undefined });
-                    }}
-                  />
-                  {/* 尾帧 */}
-                  <FramePanel
-                    label="尾帧（可选）"
-                    url={shot.lastFrameUrl}
-                    prompt={shot.lastFramePrompt}
-                    aspectRatio={aspectRatio}
-                    generating={generatingLastFrame}
-                    onGenerate={() => {
-                      setGeneratingLastFrame(true);
-                      generateFrame.mutate({ shotId: shot.id, frameType: "last", referenceImageUrls: selectedAssetUrls.length > 0 ? selectedAssetUrls : undefined });
                     }}
                   />
                 </div>
@@ -1313,12 +1279,7 @@ function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
                     )}
 
                     {/* 尾帧选项 */}
-                    {shot.lastFrameUrl && (
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, cursor: "pointer" }}>
-                        <input type="checkbox" checked={useLastFrame} onChange={e => setUseLastFrame(e.target.checked)} />
-                        使用尾帧（首尾帧模式）
-                      </label>
-                    )}
+                    {/* 尾帧选项已移除：跨量剧只使用首帧模式 */}
 
                     {/* 生成按钮 */}
                     {shot.status === "failed" && shot.errorMessage && (
@@ -1796,7 +1757,7 @@ function OverseasAssetPanel({ projectId, project, compact }: { projectId: number
           <p style={{ color: C.muted, marginBottom: 8 }}>还没有{ASSET_TABS.find(t => t.key === assetTab)?.label}资产</p>
           <p style={{ fontSize: 12, color: "oklch(0.40 0.01 240)", marginBottom: 20 }}>
             {assetTab === "character" ? "添加主要角色，上传 MJ 参考图后生成一致性参考图" :
-             assetTab === "scene" ? "添加主要场景，生成场景参考图用于首尾帧一致性" :
+             assetTab === "scene" ? "添加主要场景，生成场景参考图用于首帧一致性" :
              "添加道具资产，生成道具参考图"}
           </p>
           <Button onClick={() => setShowAddDialog(true)} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, gap: 6 }}>

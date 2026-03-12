@@ -77,8 +77,12 @@ export default function Home() {
     // Still loading auth state — show landing while waiting
   }
 
+  const handleEnterOverseas = () => {
+    window.location.href = "/overseas";
+  };
+
   if (view === "landing") {
-    return <Landing onEnter={handleEnterFromLanding} />;
+    return <Landing onEnter={handleEnterFromLanding} onEnterOverseas={handleEnterOverseas} />;
   }
 
   if (view === "auth") {
