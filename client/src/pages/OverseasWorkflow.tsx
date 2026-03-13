@@ -1,38 +1,50 @@
-// DESIGN: 出海真人短剧图生视频工作流 — 工业风暗色系（与鎏光机主工作流一致）
-import { useState, useEffect, useRef } from "react";
+// 跑量剧工作流 — 三段式界面（剧本 / 主体 / 故事版）
+// 参考幻角产品设计，工业暗色调，绿色主题
+
+import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { toast } from "sonner";
 import {
-  Film, Plus, Trash2, ChevronRight, ChevronDown, ChevronUp,
+  Film, Plus, Trash2, ChevronDown, ChevronUp,
   Wand2, ImageIcon, Video, Upload, Edit3, Check, X,
-  Loader2, Globe, Clapperboard, ArrowLeft, RefreshCw,
+  Loader2, Globe, ArrowLeft, RefreshCw,
   Copy, Download, Play, AlertCircle, Sparkles,
-  Users, MapPin, Package, Layers, FileSpreadsheet, Zap, MessageSquare, CheckSquare
+  Users, MapPin, Package, Zap, MessageSquare, FileText,
+  ChevronLeft, ChevronRight, Settings, FileDown, FileUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 
-// ─── 类型 ──────────────────────────────────────────────────────────────────────
+// ─── 颜色主题（幻角风格 深色+绿色主题） ──────────────────────────────────────
+const C = {
+  bg: "oklch(0.10 0.005 240)",
+  surface: "oklch(0.13 0.006 240)",
+  card: "oklch(0.15 0.006 240)",
+  border: "oklch(0.20 0.006 240)",
+  borderHover: "oklch(0.30 0.01 240)",
+  green: "oklch(0.72 0.20 160)",       // 幻角绿
+  greenDim: "oklch(0.72 0.20 160 / 0.15)",
+  greenBorder: "oklch(0.72 0.20 160 / 0.5)",
+  amber: "oklch(0.75 0.17 65)",
+  text: "oklch(0.88 0.005 60)",
+  textSub: "oklch(0.70 0.008 240)",
+  muted: "oklch(0.50 0.01 240)",
+  mutedDim: "oklch(0.25 0.008 240)",
+  red: "oklch(0.65 0.22 25)",
+  blue: "oklch(0.65 0.15 240)",
+};
 
+// ─── 类型定义 ─────────────────────────────────────────────────────────────────
 type OverseasProject = {
   id: number;
   name: string;
@@ -92,18 +104,9 @@ type ScriptShot = {
   errorMessage: string | null;
 };
 
-// ─── 颜色常量 ──────────────────────────────────────────────────────────────────
-const C = {
-  bg: "oklch(0.11 0.005 240)",
-  surface: "oklch(0.14 0.006 240)",
-  border: "oklch(0.22 0.006 240)",
-  amber: "oklch(0.75 0.17 65)",
-  text: "oklch(0.88 0.005 60)",
-  muted: "oklch(0.55 0.01 240)",
-  green: "oklch(0.70 0.18 145)",
-  red: "oklch(0.65 0.22 25)",
-  blue: "oklch(0.65 0.15 240)",
-};
+type WorkflowTab = "script" | "subject" | "storyboard";
+type SubjectFilter = "all" | "character" | "scene" | "prop";
+type StoryboardPanel = "image" | "video";
 
 const MARKET_OPTIONS = [
   { value: "us", label: "🇺🇸 美国" },
@@ -116,196 +119,184 @@ const MARKET_OPTIONS = [
   { value: "global", label: "🌍 全球" },
 ];
 
-const GENRE_OPTIONS = [
-  { value: "romance", label: "爱情" },
-  { value: "revenge", label: "复仇" },
-  { value: "scifi", label: "科幻" },
-  { value: "fantasy", label: "奇幻" },
-  { value: "thriller", label: "悬疑" },
-  { value: "action", label: "动作" },
-  { value: "comedy", label: "喜剧" },
-  { value: "drama", label: "家庭剧情" },
-];
-
-const SHOT_STATUS_CONFIG = {
-  draft: { label: "待处理", color: C.muted },
-  generating_frame: { label: "生成帧中", color: C.amber },
-  frame_done: { label: "帧已就绪", color: C.blue },
-  generating_video: { label: "生成视频中", color: C.amber },
-  done: { label: "完成", color: C.green },
-  failed: { label: "失败", color: C.red },
+const SHOT_TYPE_COLORS: Record<string, string> = {
+  "大特写": "oklch(0.72 0.20 160)",
+  "特写": "oklch(0.72 0.20 160)",
+  "近景": "oklch(0.65 0.15 200)",
+  "中景": "oklch(0.65 0.15 200)",
+  "中近景": "oklch(0.65 0.15 200)",
+  "全景": "oklch(0.65 0.15 240)",
+  "远景": "oklch(0.65 0.15 240)",
+  "大远景": "oklch(0.65 0.15 240)",
 };
 
-// ─── 主组件 ────────────────────────────────────────────────────────────────────
-
+// ─── 主组件 ───────────────────────────────────────────────────────────────────
 export default function OverseasWorkflow() {
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
-  const [view, setView] = useState<"dashboard" | "project">("dashboard");
+  const { isAuthenticated, loading } = useAuth();
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
-  const [activeEpisode, setActiveEpisode] = useState<number>(1);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [activeEpisode, setActiveEpisode] = useState(1);
+  const [activeTab, setActiveTab] = useState<WorkflowTab>("script");
 
-  if (authLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg }}>
-        <Loader2 className="animate-spin w-8 h-8" style={{ color: C.amber }} />
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg }}>
+        <Loader2 className="animate-spin" style={{ color: C.green }} size={32} />
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg }}>
+        <div style={{ textAlign: "center" }}>
+          <Film size={48} style={{ color: C.muted, marginBottom: 16 }} />
+          <p style={{ color: C.textSub, marginBottom: 16 }}>请先登录以使用跑量剧工作流</p>
+          <Button onClick={() => window.location.href = getLoginUrl()} style={{ background: C.green, color: "oklch(0.1 0.005 240)" }}>
+            登录
+          </Button>
+        </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
+  if (!activeProjectId) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-6" style={{ background: C.bg }}>
-        <Clapperboard size={48} style={{ color: C.amber }} />
-        <h2 className="text-2xl font-bold" style={{ color: C.text, fontFamily: "'Space Grotesk', sans-serif" }}>
-          出海短剧工作流
-        </h2>
-        <p style={{ color: C.muted }}>请先登录以使用此功能</p>
-        <Button onClick={() => (window.location.href = getLoginUrl())} style={{ background: C.amber, color: "oklch(0.1 0.005 240)" }}>
-          登录
-        </Button>
-      </div>
+      <ProjectDashboard
+        onOpenProject={(id) => { setActiveProjectId(id); setActiveTab("script"); setActiveEpisode(1); }}
+        onCreateNew={() => {}}
+      />
     );
   }
 
   return (
-    <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontFamily: "'Noto Sans SC', 'Space Grotesk', sans-serif" }}>
-      {/* 顶部导航 */}
-      <nav style={{ borderBottom: `1px solid ${C.border}`, background: `${C.surface}`, padding: "0 1.5rem", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 40 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {view === "project" && (
-            <button onClick={() => setView("dashboard")} style={{ color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
-              <ArrowLeft size={14} /> 返回
-            </button>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Globe size={18} style={{ color: C.amber }} />
-            <span style={{ fontSize: 15, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", color: C.text }}>出海短剧工作流</span>
-            <span style={{ fontSize: 10, color: C.muted, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.1em" }}>IMAGE-TO-VIDEO</span>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <a href="/" style={{ fontSize: 12, color: C.muted, textDecoration: "none" }}>← 鎏光机主工作流</a>
-        </div>
-      </nav>
-
-      <AnimatePresence mode="wait">
-        {view === "dashboard" ? (
-          <motion.div key="dashboard" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-            <ProjectDashboard
-              onOpenProject={(id) => { setActiveProjectId(id); setView("project"); }}
-              onCreateNew={() => setShowCreateDialog(true)}
-            />
-          </motion.div>
-        ) : activeProjectId ? (
-          <motion.div key="project" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-            <ProjectWorkspace
-              projectId={activeProjectId}
-              activeEpisode={activeEpisode}
-              onEpisodeChange={setActiveEpisode}
-            />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <CreateProjectDialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} onCreated={(id) => { setActiveProjectId(id); setView("project"); setShowCreateDialog(false); }} />
-    </div>
+    <ProjectWorkspace
+      projectId={activeProjectId}
+      activeEpisode={activeEpisode}
+      onEpisodeChange={setActiveEpisode}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onBack={() => setActiveProjectId(null)}
+    />
   );
 }
 
-// ─── 项目仪表板 ────────────────────────────────────────────────────────────────
-
+// ─── 项目列表 Dashboard ───────────────────────────────────────────────────────
 function ProjectDashboard({ onOpenProject, onCreateNew }: { onOpenProject: (id: number) => void; onCreateNew: () => void }) {
-  const { data: projects, isLoading, refetch } = trpc.overseas.listProjects.useQuery();
-  const deleteProject = trpc.overseas.deleteProject.useMutation({ onSuccess: () => refetch() });
+  const [showCreate, setShowCreate] = useState(false);
+  const { data: projects, refetch } = trpc.overseas.listProjects.useQuery();
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "2.5rem 1.5rem" }}>
+    <div style={{ minHeight: "100vh", background: C.bg, padding: "32px 40px" }}>
+      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Space Grotesk', sans-serif", color: C.text, marginBottom: 4 }}>出海短剧项目</h1>
-          <p style={{ fontSize: 13, color: C.muted }}>图生视频工作流 · MJ → Nano Banana Pro → Seedance 1.5 / Veo 3.1</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <Zap size={20} style={{ color: C.green }} />
+            <span style={{ fontSize: 20, fontWeight: 700, color: C.text, fontFamily: "'Space Grotesk', sans-serif" }}>跑量剧</span>
+            <span style={{ fontSize: 12, color: C.muted, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.08em" }}>IMAGE-TO-VIDEO</span>
+          </div>
+          <p style={{ fontSize: 13, color: C.muted }}>MJ 资产 → NBP 首帧 → Seedance 视频，全自动批量跑量</p>
         </div>
-        <Button onClick={onCreateNew} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, gap: 6 }}>
+        <Button
+          onClick={() => setShowCreate(true)}
+          style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, gap: 6, fontSize: 13 }}
+        >
           <Plus size={15} /> 新建项目
         </Button>
       </div>
 
-      {isLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "4rem 0" }}>
-          <Loader2 className="animate-spin" style={{ color: C.amber }} />
-        </div>
-      ) : !projects?.length ? (
-        <div style={{ textAlign: "center", padding: "5rem 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
-          <Globe size={40} style={{ color: C.muted, margin: "0 auto 16px" }} />
-          <p style={{ color: C.muted, marginBottom: 20 }}>还没有出海短剧项目</p>
-          <Button onClick={onCreateNew} variant="outline" style={{ borderColor: C.amber, color: C.amber }}>
+      {/* Project Grid */}
+      {!projects || projects.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "80px 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
+          <Film size={48} style={{ color: C.mutedDim, margin: "0 auto 16px" }} />
+          <p style={{ color: C.muted, marginBottom: 8 }}>还没有跑量剧项目</p>
+          <p style={{ fontSize: 12, color: "oklch(0.35 0.008 240)", marginBottom: 20 }}>
+            创建项目后，导入剧本，AI 自动拆解分镜，批量生成首帧和视频
+          </p>
+          <Button onClick={() => setShowCreate(true)} style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, gap: 6 }}>
             <Plus size={14} /> 创建第一个项目
           </Button>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {projects.map((p) => (
-            <ProjectCard
-              key={p.id}
-              project={p as OverseasProject}
-              onOpen={() => onOpenProject(p.id)}
-              onDelete={() => {
-                if (confirm(`确认删除项目「${p.name}」？`)) {
-                  deleteProject.mutate({ id: p.id });
-                }
-              }}
-            />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+          {(projects as OverseasProject[]).map(p => (
+            <ProjectCard key={p.id} project={p} onOpen={() => onOpenProject(p.id)} onDelete={() => refetch()} />
           ))}
+          <button
+            onClick={() => setShowCreate(true)}
+            style={{
+              border: `2px dashed ${C.border}`, borderRadius: 12, padding: "32px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+              cursor: "pointer", background: "transparent", color: C.muted,
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = C.green; (e.currentTarget as HTMLButtonElement).style.color = C.green; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = C.border; (e.currentTarget as HTMLButtonElement).style.color = C.muted; }}
+          >
+            <Plus size={24} />
+            <span style={{ fontSize: 13 }}>新建项目</span>
+          </button>
         </div>
       )}
+
+      <CreateProjectDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={(id) => { setShowCreate(false); onOpenProject(id); }} />
     </div>
   );
 }
 
 function ProjectCard({ project, onOpen, onDelete }: { project: OverseasProject; onOpen: () => void; onDelete: () => void }) {
-  const marketLabel = MARKET_OPTIONS.find(m => m.value === project.market)?.label || project.market;
-  const genreLabel = GENRE_OPTIONS.find(g => g.value === project.genre)?.label || project.genre;
+  const deleteProject = trpc.overseas.deleteProject.useMutation({
+    onSuccess: () => { toast.success("项目已删除"); onDelete(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const marketLabel = MARKET_OPTIONS.find(m => m.value === project.market)?.label ?? project.market;
+  const episodeCount = project.totalEpisodes ?? 20;
 
   return (
     <div
-      style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, cursor: "pointer", transition: "border-color 0.2s, transform 0.2s" }}
+      style={{
+        background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
+        padding: "20px", cursor: "pointer", transition: "all 0.2s",
+        position: "relative",
+      }}
       onClick={onOpen}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.amber; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.border; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
+      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.green; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.border; }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
-        <div>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4, fontFamily: "'Space Grotesk', sans-serif" }}>{project.name}</h3>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, padding: "2px 8px", background: "oklch(0.18 0.006 240)", borderRadius: 4, color: C.muted }}>{marketLabel}</span>
-            <span style={{ fontSize: 11, padding: "2px 8px", background: "oklch(0.18 0.006 240)", borderRadius: 4, color: C.muted }}>{genreLabel}</span>
-            <span style={{ fontSize: 11, padding: "2px 8px", background: "oklch(0.18 0.006 240)", borderRadius: 4, color: C.muted }}>{project.aspectRatio === "portrait" ? "9:16" : "16:9"}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: C.greenDim, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Film size={18} style={{ color: C.green }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>{project.name}</p>
+            <p style={{ fontSize: 11, color: C.muted }}>{marketLabel}</p>
           </div>
         </div>
         <button
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          style={{ color: C.muted, cursor: "pointer", padding: 4, borderRadius: 6, transition: "color 0.2s" }}
-          onMouseEnter={e => (e.currentTarget.style.color = C.red)}
-          onMouseLeave={e => (e.currentTarget.style.color = C.muted)}
+          onClick={e => { e.stopPropagation(); if (confirm("确认删除此项目？")) deleteProject.mutate({ id: project.id }); }}
+          style={{ padding: 4, borderRadius: 6, cursor: "pointer", background: "transparent", color: C.muted, border: "none" }}
         >
           <Trash2 size={14} />
         </button>
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16 }}>
-        <span style={{ fontSize: 12, color: C.muted }}>{project.totalEpisodes} 集</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.amber }}>
-          进入工作流 <ChevronRight size={12} />
-        </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.greenDim, color: C.green, border: `1px solid ${C.greenBorder}` }}>
+          {project.aspectRatio === "portrait" ? "9:16" : "16:9"}
+        </span>
+        <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "oklch(0.18 0.006 240)", color: C.textSub }}>
+          {episodeCount} 集
+        </span>
+        <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "oklch(0.18 0.006 240)", color: C.textSub }}>
+          真人写实
+        </span>
       </div>
     </div>
   );
 }
 
-// ─── 创建项目对话框 ────────────────────────────────────────────────────────────
-
 function CreateProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: number) => void }) {
-  const [form, setForm] = useState({ name: "", market: "us", aspectRatio: "portrait" as "portrait" | "landscape", style: "realistic" as "realistic" | "animation" | "cg", genre: "romance", totalEpisodes: 20 });
+  const [form, setForm] = useState({ name: "", market: "us", aspectRatio: "portrait" as "portrait" | "landscape", genre: "romance", totalEpisodes: 20 });
   const createProject = trpc.overseas.createProject.useMutation({
     onSuccess: (data) => { toast.success("项目已创建"); onCreated(data.id); },
     onError: (e) => toast.error(e.message),
@@ -313,14 +304,19 @@ function CreateProjectDialog({ open, onClose, onCreated }: { open: boolean; onCl
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent style={{ background: C.surface, border: `1px solid ${C.border}`, color: C.text, maxWidth: 480 }}>
+      <DialogContent style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 480 }}>
         <DialogHeader>
-          <DialogTitle style={{ color: C.text, fontFamily: "'Space Grotesk', sans-serif" }}>新建出海短剧项目</DialogTitle>
+          <DialogTitle style={{ color: C.text }}>新建跑量剧项目</DialogTitle>
         </DialogHeader>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "8px 0" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "8px 0" }}>
           <div>
-            <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>剧名</label>
-            <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="例：无敌教师 / Invincible Teacher" style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }} />
+            <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>项目名称</label>
+            <Input
+              placeholder="例：荒野12 · 第一季"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }}
+            />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
@@ -335,19 +331,6 @@ function CreateProjectDialog({ open, onClose, onCreated }: { open: boolean; onCl
               </Select>
             </div>
             <div>
-              <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>题材</label>
-              <Select value={form.genre} onValueChange={v => setForm(f => ({ ...f, genre: v }))}>
-                <SelectTrigger style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-                  {GENRE_OPTIONS.map(g => <SelectItem key={g.value} value={g.value} style={{ color: C.text }}>{g.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
               <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>画幅</label>
               <Select value={form.aspectRatio} onValueChange={v => setForm(f => ({ ...f, aspectRatio: v as "portrait" | "landscape" }))}>
                 <SelectTrigger style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }}>
@@ -359,18 +342,22 @@ function CreateProjectDialog({ open, onClose, onCreated }: { open: boolean; onCl
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>总集数</label>
-              <Input type="number" min={1} max={100} value={form.totalEpisodes} onChange={e => setForm(f => ({ ...f, totalEpisodes: parseInt(e.target.value) || 20 }))} style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }} />
-            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>总集数</label>
+            <Input
+              type="number" min={1} max={100} value={form.totalEpisodes}
+              onChange={e => setForm(f => ({ ...f, totalEpisodes: parseInt(e.target.value) || 20 }))}
+              style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }}
+            />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} style={{ borderColor: C.border, color: C.muted }}>取消</Button>
           <Button
-            onClick={() => createProject.mutate(form)}
+            onClick={() => createProject.mutate({ name: form.name, market: form.market, aspectRatio: form.aspectRatio, style: "realistic", genre: form.genre, totalEpisodes: form.totalEpisodes })}
             disabled={!form.name.trim() || createProject.isPending}
-            style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700 }}
+            style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700 }}
           >
             {createProject.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : "创建项目"}
           </Button>
@@ -380,1446 +367,298 @@ function CreateProjectDialog({ open, onClose, onCreated }: { open: boolean; onCl
   );
 }
 
-// ─── 项目工作区 ────────────────────────────────────────────────────────────────
+// ─── 项目工作区（三段式导航） ──────────────────────────────────────────────────
+function ProjectWorkspace({
+  projectId, activeEpisode, onEpisodeChange, activeTab, onTabChange, onBack
+}: {
+  projectId: number;
+  activeEpisode: number;
+  onEpisodeChange: (ep: number) => void;
+  activeTab: WorkflowTab;
+  onTabChange: (tab: WorkflowTab) => void;
+  onBack: () => void;
+}) {
+  const { data } = trpc.overseas.getProject.useQuery({ id: projectId });
+  const project = data?.project as OverseasProject | undefined;
 
-function ProjectWorkspace({ projectId, activeEpisode, onEpisodeChange }: { projectId: number; activeEpisode: number; onEpisodeChange: (ep: number) => void }) {
-  const { data, isLoading, refetch } = trpc.overseas.getProject.useQuery({ id: projectId });
-  const [scriptText, setScriptText] = useState("");
-  const [parsingScript, setParsingScript] = useState(false);
-  const [expandedShot, setExpandedShot] = useState<number | null>(null);
-  const [showScriptInput, setShowScriptInput] = useState(false);
-  const [stage, setStage] = useState<"script" | "assets" | "production">("script");
-  const [importingExcel, setImportingExcel] = useState(false);
-  const excelInputRef = useRef<HTMLInputElement>(null);
-  // 批量生成首帧状态
-  const [batchGenerating, setBatchGenerating] = useState(false);
-  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
-  // 批量生成视频提示词状态
-  const [batchPromptGenerating, setBatchPromptGenerating] = useState(false);
-  const [batchPromptProgress, setBatchPromptProgress] = useState({ done: 0, total: 0 });
-  // 多选模式状态
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedShotIds, setSelectedShotIds] = useState<Set<number>>(new Set());
-  const [batchActionRunning, setBatchActionRunning] = useState(false);
-  const [batchActionProgress, setBatchActionProgress] = useState({ done: 0, total: 0, action: "" });
-  // 批量跑量面板状态
-  const [showBatchRunPanel, setShowBatchRunPanel] = useState(false);
-
-  const parseScript = trpc.overseas.parseScript.useMutation({
-    onSuccess: (result) => {
-      toast.success(`已解析 ${result.count} 个镜头`);
-      setShowScriptInput(false);
-      setScriptText("");
-      refetch();
-      setParsingScript(false);
-    },
-    onError: (e) => { toast.error(e.message); setParsingScript(false); },
-  });
-
-  const importExcel = trpc.overseas.importScriptFromExcel.useMutation({
-    onSuccess: (result) => {
-      toast.success(`已导入 ${result.imported} 个分镜`);
-      refetch();
-      setImportingExcel(false);
-    },
-    onError: (e) => { toast.error(e.message); setImportingExcel(false); },
-  });
-
-  const generateFrame = trpc.overseas.generateFrame.useMutation();
-
-  const handleExcelUpload = async (file: File) => {
-    setImportingExcel(true);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = (e.target?.result as string).split(",")[1];
-      importExcel.mutate({ projectId, episodeNumber: activeEpisode, fileBase64: base64 });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const generateVideoPrompt = trpc.overseas.generateVideoPrompt.useMutation();
-
-  const handleBatchGenerateVideoPrompts = async (shots: ScriptShot[]) => {
-    const pending = shots.filter(s => s.firstFrameUrl && !s.videoPrompt);
-    if (pending.length === 0) {
-      toast.success("本集所有有首帧的镜头均已有视频提示词");
-      return;
-    }
-    setBatchPromptGenerating(true);
-    setBatchPromptProgress({ done: 0, total: pending.length });
-    for (let i = 0; i < pending.length; i++) {
-      try {
-        await generateVideoPrompt.mutateAsync({ shotId: pending[i].id });
-        setBatchPromptProgress({ done: i + 1, total: pending.length });
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        toast.error(`镜头 ${pending[i].shotNumber} 提示词生成失败: ${msg}`);
-      }
-    }
-    setBatchPromptGenerating(false);
-    refetch();
-    toast.success(`批量生成完成！共处理 ${pending.length} 个镜头`);
-  };
-
-  const handleBatchAction = async (action: "first" | "last" | "prompt", shots: ScriptShot[]) => {
-    const selectedShots = shots.filter(s => selectedShotIds.has(s.id));
-    if (selectedShots.length === 0) { toast.error("请先选择镜头"); return; }
-    const actionLabel = action === "first" ? "首帧" : action === "last" ? "尾帧" : "视频提示词";
-    setBatchActionRunning(true);
-    setBatchActionProgress({ done: 0, total: selectedShots.length, action: actionLabel });
-    for (let i = 0; i < selectedShots.length; i++) {
-      try {
-        if (action === "first" || action === "last") {
-          await generateFrame.mutateAsync({ shotId: selectedShots[i].id, frameType: action });
-        } else {
-          await generateVideoPrompt.mutateAsync({ shotId: selectedShots[i].id });
-        }
-        setBatchActionProgress({ done: i + 1, total: selectedShots.length, action: actionLabel });
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        toast.error(`镜头 ${selectedShots[i].shotNumber} 失败: ${msg}`);
-      }
-    }
-    setBatchActionRunning(false);
-    refetch();
-    toast.success(`批量${actionLabel}生成完成！`);
-  };
-
-  const handleBatchGenerateFrames = async (shots: ScriptShot[]) => {
-    const pending = shots.filter(s => !s.firstFrameUrl);
-    if (pending.length === 0) { toast.success("本集所有镜头已生成首帧"); return; }
-    setBatchGenerating(true);
-    setBatchProgress({ done: 0, total: pending.length });
-    for (let i = 0; i < pending.length; i++) {
-      try {
-        await generateFrame.mutateAsync({ shotId: pending[i].id, frameType: "first" });
-        setBatchProgress({ done: i + 1, total: pending.length });
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        toast.error(`镜头 ${pending[i].shotNumber} 生成失败: ${msg}`);
-      }
-    }
-    setBatchGenerating(false);
-    refetch();
-    toast.success(`批量生成完成！共处理 ${pending.length} 个镜头`);
-  };
-
-  if (isLoading) {
+  if (!project) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "5rem 0" }}>
-        <Loader2 className="animate-spin w-8 h-8" style={{ color: C.amber }} />
+      <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Loader2 className="animate-spin" style={{ color: C.green }} size={32} />
       </div>
     );
   }
 
-  if (!data) return null;
-
-  const { project, shots } = data;
-  const episodeShots = shots.filter(s => s.episodeNumber === activeEpisode) as ScriptShot[];
-  const totalEpisodes = project.totalEpisodes || 20;
-  const episodeNumbers = Array.from({ length: totalEpisodes }, (_, i) => i + 1);
-
-  const doneCount = episodeShots.filter(s => s.status === "done").length;
-  const frameCount = episodeShots.filter(s => s.firstFrameUrl).length;
-
-  return (
-    <div style={{ display: "flex", height: "calc(100vh - 56px)" }}>
-      {/* 左侧集数导航 */}
-      <div style={{ width: 72, borderRight: `1px solid ${C.border}`, overflowY: "auto", padding: "12px 8px", display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-        {episodeNumbers.map(ep => {
-          const epShots = shots.filter(s => s.episodeNumber === ep);
-          const epDone = epShots.filter(s => s.status === "done").length;
-          const hasShots = epShots.length > 0;
-          return (
-            <button
-              key={ep}
-              onClick={() => onEpisodeChange(ep)}
-              style={{
-                width: 52, height: 52, borderRadius: 10, border: `1px solid ${activeEpisode === ep ? C.amber : C.border}`,
-                background: activeEpisode === ep ? "oklch(0.75 0.17 65 / 0.12)" : "transparent",
-                color: activeEpisode === ep ? C.amber : C.muted,
-                cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
-                transition: "all 0.15s",
-              }}
-            >
-              <span style={{ fontSize: 14, fontWeight: 700 }}>E{ep}</span>
-              {hasShots && <span style={{ fontSize: 9, color: epDone === epShots.length ? C.green : C.muted }}>{epDone}/{epShots.length}</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* 主内容区 */}
-      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-        {/* 三阶段导航 */}
-        <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.border}`, padding: "0 1.5rem", background: C.surface, flexShrink: 0 }}>
-          {([
-            { key: "script", label: "① 剧本拆解", icon: <Film size={14} /> },
-            { key: "assets", label: "② 资产提示词", icon: <Layers size={14} /> },
-            { key: "production", label: "③ 制作", icon: <Video size={14} /> },
-          ] as const).map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setStage(tab.key)}
-              style={{
-                padding: "12px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                background: "transparent", border: "none",
-                borderBottom: `2px solid ${stage === tab.key ? C.amber : "transparent"}`,
-                color: stage === tab.key ? C.amber : C.muted,
-                display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s",
-              }}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 阶段一：剧本拆解 */}
-        {stage === "script" && (
-        <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
-        {/* 集头部 */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", color: C.text, marginBottom: 2 }}>
-              {project.name} — 第 {activeEpisode} 集
-            </h2>
-            <p style={{ fontSize: 12, color: C.muted }}>
-              {episodeShots.length} 个镜头 · {frameCount} 帧已生成 · {doneCount} 视频完成
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {/* 隐藏的 Excel file input */}
-            <input
-              ref={excelInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              style={{ display: "none" }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleExcelUpload(f); e.target.value = ""; }}
-            />
-            {/* Excel 导入按鈕 */}
-            <Button
-              variant="outline"
-              onClick={() => excelInputRef.current?.click()}
-              disabled={importingExcel}
-              style={{ borderColor: C.border, color: C.muted, fontSize: 12, gap: 6 }}
-            >
-              {importingExcel ? <><Loader2 className="animate-spin w-3 h-3" /> 导入中...</> : <><FileSpreadsheet size={13} /> Excel 分镜导入</>}
-            </Button>
-            {/* AI 解析剧本按鈕 */}
-            <Button
-              variant="outline"
-              onClick={() => setShowScriptInput(!showScriptInput)}
-              style={{ borderColor: C.border, color: C.muted, fontSize: 12, gap: 6 }}
-            >
-              <Upload size={13} /> {episodeShots.length > 0 ? "重新解析剧本" : "AI 解析剧本"}
-            </Button>
-            {/* 导入完成后跳转制作阶段 */}
-            {episodeShots.length > 0 && (
-              <Button
-                onClick={() => setStage("production")}
-                style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 12, gap: 6 }}
-              >
-                <Video size={13} /> 进入制作阶段 →
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* 剧本输入区 */}
-        <AnimatePresence>
-          {showScriptInput && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              style={{ overflow: "hidden", marginBottom: 20 }}
-            >
-              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-                <p style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
-                  粘贴第 {activeEpisode} 集剧本（支持中英文，AI 将自动解析为 20-30 个镜头）
-                </p>
-                <Textarea
-                  value={scriptText}
-                  onChange={e => setScriptText(e.target.value)}
-                  placeholder={`Episode ${activeEpisode} Script\n\nScene 1 - INT. CLASSROOM - DAY\n\nTeacher ALEX stands at the front of the class...\n\n或粘贴中文剧本，AI 会自动翻译为英文分镜`}
-                  rows={10}
-                  style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, fontSize: 13, resize: "vertical" }}
-                />
-                <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
-                  <Button variant="outline" onClick={() => setShowScriptInput(false)} style={{ borderColor: C.border, color: C.muted, fontSize: 12 }}>取消</Button>
-                  <Button
-                    onClick={() => {
-                      if (!scriptText.trim()) return;
-                      setParsingScript(true);
-                      parseScript.mutate({ projectId, episodeNumber: activeEpisode, scriptText, language: "en" });
-                    }}
-                    disabled={!scriptText.trim() || parsingScript}
-                    style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 12, gap: 6 }}
-                  >
-                    {parsingScript ? <><Loader2 className="animate-spin w-3 h-3" /> 解析中...</> : <><Sparkles size={13} /> AI 解析分镜</>}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 工作流说明（空状态） */}
-        {episodeShots.length === 0 && !showScriptInput && (
-          <div style={{ textAlign: "center", padding: "4rem 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
-            <Film size={40} style={{ color: C.muted, margin: "0 auto 16px" }} />
-            <p style={{ color: C.muted, marginBottom: 8 }}>第 {activeEpisode} 集还没有分镜</p>
-            <p style={{ fontSize: 12, color: "oklch(0.40 0.01 240)", marginBottom: 20 }}>导入剧本后，AI 将自动拆解为对应集数的分镜文字描述，每个镜头包含场景、动作、对白等文字内容</p>
-            <Button onClick={() => setShowScriptInput(true)} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, gap: 6 }}>
-              <Upload size={14} /> 导入第 {activeEpisode} 集剧本
-            </Button>
-          </div>
-        )}
-
-        {/* 工作流流程说明 */}
-        {episodeShots.length > 0 && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, padding: "10px 14px", background: "oklch(0.75 0.17 65 / 0.06)", border: `1px solid oklch(0.75 0.17 65 / 0.2)`, borderRadius: 10, fontSize: 12, color: C.muted, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ color: C.amber, fontWeight: 700 }}>工作流：</span>
-            <span>① MJ 生成人物/场景资产（设为全局参考）</span>
-            <ChevronRight size={12} />
-            <span>② NBP Reference to Video 生成首帧</span>
-            <ChevronRight size={12} />
-            <span>③ AI 生成视频提示词</span>
-            <ChevronRight size={12} />
-            <span style={{ color: C.amber, fontWeight: 600 }}>④ ⚡ Kling 3.0 Elements 人物一致性视频</span>
-          </div>
-        )}
-
-        {/* 多选操作面板 */}
-        {selectMode && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 12, padding: "10px 14px", background: "oklch(0.65 0.20 145 / 0.08)", border: `1px solid oklch(0.65 0.20 145 / 0.30)`, borderRadius: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <button
-              onClick={() => {
-                if (selectedShotIds.size === episodeShots.length) {
-                  setSelectedShotIds(new Set());
-                } else {
-                  setSelectedShotIds(new Set(episodeShots.map(s => s.id)));
-                }
-              }}
-              style={{ fontSize: 12, color: "oklch(0.65 0.20 145)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
-            >
-              {selectedShotIds.size === episodeShots.length ? "取消全选" : "全选"}
-            </button>
-            <span style={{ fontSize: 12, color: "oklch(0.55 0.01 240)" }}>已选 {selectedShotIds.size} / {episodeShots.length} 个镜头</span>
-            <div style={{ flex: 1 }} />
-            {batchActionRunning ? (
-              <span style={{ fontSize: 12, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
-                <Loader2 size={12} className="animate-spin" />
-                批量{batchActionProgress.action} {batchActionProgress.done}/{batchActionProgress.total}
-              </span>
-            ) : (
-              <>
-                <Button
-                  onClick={() => handleBatchAction("first", episodeShots)}
-                  disabled={selectedShotIds.size === 0}
-                  style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, gap: 4 }}
-                >
-                  <ImageIcon size={11} /> 生成首帧
-                </Button>
-
-                <Button
-                  onClick={() => handleBatchAction("prompt", episodeShots)}
-                  disabled={selectedShotIds.size === 0}
-                  style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", gap: 4 }}
-                >
-                  <MessageSquare size={11} /> 生成视频提示词
-                </Button>
-                <Button
-                  onClick={() => { setSelectMode(false); setSelectedShotIds(new Set()); }}
-                  variant="outline"
-                  style={{ fontSize: 11, padding: "4px 10px", borderColor: C.border, color: C.muted }}
-                >
-                  <X size={11} /> 取消多选
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* 分镜列表 */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {episodeShots.map((shot) => (
-            <div key={shot.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              {selectMode && (
-                <button
-                  onClick={() => {
-                    const next = new Set(selectedShotIds);
-                    if (next.has(shot.id)) next.delete(shot.id); else next.add(shot.id);
-                    setSelectedShotIds(next);
-                  }}
-                  style={{
-                    width: 20, height: 20, borderRadius: 4, border: `2px solid ${selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : C.border}`,
-                    background: selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : "transparent",
-                    cursor: "pointer", flexShrink: 0, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center"
-                  }}
-                >
-                  {selectedShotIds.has(shot.id) && <Check size={12} style={{ color: "oklch(0.1 0.005 240)" }} />}
-                </button>
-              )}
-              <div style={{ flex: 1 }}>
-                <ShotCard
-                  shot={shot}
-                  project={project as OverseasProject}
-                  expanded={expandedShot === shot.id}
-                  onToggle={() => setExpandedShot(expandedShot === shot.id ? null : shot.id)}
-                  onRefresh={refetch}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-        </div>
-        )}
-
-        {/* 阶段二：资产提示词 */}
-        {stage === "assets" && (
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            <OverseasAssetPanel projectId={projectId} project={project as OverseasProject} />
-          </div>
-        )}
-
-        {/* 阶段三：制作页面（左侧资产上传 + 右侧分镜） */}
-        {stage === "production" && (
-          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-            {/* 左侧：资产图上传区 */}
-            <div style={{ width: 280, borderRight: `1px solid ${C.border}`, overflowY: "auto", padding: 16, flexShrink: 0, background: "oklch(0.12 0.005 240)" }}>
-              <div style={{ marginBottom: 12 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4, fontFamily: "'Space Grotesk', sans-serif" }}>资产图库</h3>
-                <p style={{ fontSize: 11, color: C.muted }}>MJ 生成后上传人物/场景图，生成首尾帧时作为参考</p>
-              </div>
-              <OverseasAssetPanel projectId={projectId} project={project as OverseasProject} compact />
-            </div>
-            {/* 右侧：分镜制作列表 */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
-              {/* 集头部工具栏 */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <div>
-                  <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", color: C.text, marginBottom: 2 }}>
-                    第 {activeEpisode} 集制作
-                  </h2>
-                  <p style={{ fontSize: 12, color: C.muted }}>
-                    {episodeShots.length} 个镜头 · {frameCount} 帧已生成 · {doneCount} 视频完成
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {episodeShots.length > 0 && (
-                    <Button
-                      onClick={() => handleBatchGenerateFrames(episodeShots)}
-                      disabled={batchGenerating || batchPromptGenerating}
-                      style={{ background: batchGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, fontSize: 12, gap: 6, fontWeight: 600 }}
-                    >
-                      {batchGenerating
-                        ? <><Loader2 className="animate-spin w-3 h-3" /> 首帧 {batchProgress.done}/{batchProgress.total}</>
-                        : <><Zap size={13} /> 一键生成全部首帧</>}
-                    </Button>
-                  )}
-                  {episodeShots.length > 0 && (
-                    <Button
-                      onClick={() => handleBatchGenerateVideoPrompts(episodeShots)}
-                      disabled={batchPromptGenerating || batchGenerating}
-                      style={{ background: batchPromptGenerating ? "oklch(0.30 0.01 240)" : "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", fontSize: 12, gap: 6, fontWeight: 600 }}
-                    >
-                      {batchPromptGenerating
-                        ? <><Loader2 className="animate-spin w-3 h-3" /> 提示词 {batchPromptProgress.done}/{batchPromptProgress.total}</>
-                        : <><MessageSquare size={13} /> 一键生成视频提示词</>}
-                    </Button>
-                  )}
-                  {episodeShots.length > 0 && (
-                    <Button
-                      variant="outline"
-                      onClick={() => { setSelectMode(!selectMode); setSelectedShotIds(new Set()); }}
-                      style={{ borderColor: selectMode ? "oklch(0.65 0.20 145)" : C.border, color: selectMode ? "oklch(0.65 0.20 145)" : C.muted, fontSize: 12, gap: 6, background: selectMode ? "oklch(0.65 0.20 145 / 0.10)" : "transparent" }}
-                    >
-                      <CheckSquare size={13} /> {selectMode ? `已选 ${selectedShotIds.size}` : "多选"}
-                    </Button>
-                  )}
-                  {episodeShots.length > 0 && (
-                    <Button
-                      onClick={() => setShowBatchRunPanel(!showBatchRunPanel)}
-                      style={{
-                        background: showBatchRunPanel ? "oklch(0.75 0.17 65 / 0.25)" : "oklch(0.75 0.17 65)",
-                        color: "oklch(0.1 0.005 240)", fontSize: 12, gap: 6, fontWeight: 700,
-                        border: `1px solid ${C.amber}`,
-                      }}
-                    >
-                      <Zap size={13} /> ⚡ 批量跑量
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* 批量跑量面板 */}
-              {showBatchRunPanel && data && (
-                <BatchRunPanel
-                  projectId={projectId}
-                  project={data.project as OverseasProject}
-                  onClose={() => setShowBatchRunPanel(false)}
-                  onComplete={() => { setShowBatchRunPanel(false); refetch(); }}
-                />
-              )}
-
-              {episodeShots.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "4rem 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
-                  <Film size={40} style={{ color: C.muted, margin: "0 auto 16px" }} />
-                  <p style={{ color: C.muted, marginBottom: 8 }}>第 {activeEpisode} 集还没有分镜</p>
-                  <p style={{ fontSize: 12, color: "oklch(0.40 0.01 240)", marginBottom: 20 }}>请先在「剧本拆解」阶段导入并解析剧本</p>
-                  <Button onClick={() => setStage("script")} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, gap: 6 }}>
-                    <Film size={14} /> 去导入剧本
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  {/* 多选操作面板 */}
-                  {selectMode && (
-                    <div style={{ display: "flex", gap: 8, marginBottom: 12, padding: "10px 14px", background: "oklch(0.65 0.20 145 / 0.08)", border: `1px solid oklch(0.65 0.20 145 / 0.30)`, borderRadius: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <button
-                        onClick={() => {
-                          if (selectedShotIds.size === episodeShots.length) {
-                            setSelectedShotIds(new Set());
-                          } else {
-                            setSelectedShotIds(new Set(episodeShots.map(s => s.id)));
-                          }
-                        }}
-                        style={{ fontSize: 12, color: "oklch(0.65 0.20 145)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
-                      >
-                        {selectedShotIds.size === episodeShots.length ? "取消全选" : "全选"}
-                      </button>
-                      <span style={{ fontSize: 12, color: "oklch(0.55 0.01 240)" }}>已选 {selectedShotIds.size} / {episodeShots.length} 个镜头</span>
-                      <div style={{ flex: 1 }} />
-                      {batchActionRunning ? (
-                        <span style={{ fontSize: 12, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
-                          <Loader2 size={12} className="animate-spin" />
-                          批量{batchActionProgress.action} {batchActionProgress.done}/{batchActionProgress.total}
-                        </span>
-                      ) : (
-                        <>
-                          <Button onClick={() => handleBatchAction("first", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.75 0.17 65 / 0.15)", border: `1px solid ${C.amber}`, color: C.amber, gap: 4 }}>
-                            <ImageIcon size={11} /> 生成首帧
-                          </Button>
-
-                          <Button onClick={() => handleBatchAction("prompt", episodeShots)} disabled={selectedShotIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", background: "oklch(0.65 0.15 200 / 0.12)", border: `1px solid oklch(0.65 0.15 200)`, color: "oklch(0.65 0.15 200)", gap: 4 }}>
-                            <MessageSquare size={11} /> 生成视频提示词
-                          </Button>
-                          <Button onClick={() => { setSelectMode(false); setSelectedShotIds(new Set()); }} variant="outline" style={{ fontSize: 11, padding: "4px 10px", borderColor: C.border, color: C.muted }}>
-                            <X size={11} /> 取消多选
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {/* 分镜列表 */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {episodeShots.map((shot) => (
-                      <div key={shot.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                        {selectMode && (
-                          <button
-                            onClick={() => {
-                              const next = new Set(selectedShotIds);
-                              if (next.has(shot.id)) next.delete(shot.id); else next.add(shot.id);
-                              setSelectedShotIds(next);
-                            }}
-                            style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : C.border}`, background: selectedShotIds.has(shot.id) ? "oklch(0.65 0.20 145)" : "transparent", cursor: "pointer", flexShrink: 0, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
-                          >
-                            {selectedShotIds.has(shot.id) && <Check size={12} style={{ color: "oklch(0.1 0.005 240)" }} />}
-                          </button>
-                        )}
-                        <div style={{ flex: 1 }}>
-                          <ShotCard
-                            shot={shot}
-                            project={project as OverseasProject}
-                            expanded={expandedShot === shot.id}
-                            onToggle={() => setExpandedShot(expandedShot === shot.id ? null : shot.id)}
-                            onRefresh={refetch}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── 分镜卡片 ──────────────────────────────────────────────────────────────────
-
-function ShotCard({ shot, project, expanded, onToggle, onRefresh }: {
-  shot: ScriptShot;
-  project: OverseasProject;
-  expanded: boolean;
-  onToggle: () => void;
-  onRefresh: () => void;
-}) {
-  const [generatingFirstFrame, setGeneratingFirstFrame] = useState(false);
-  const [generatingLastFrame, setGeneratingLastFrame] = useState(false);
-  const [generatingVideoPrompt, setGeneratingVideoPrompt] = useState(false);
-  const [generatingVideo, setGeneratingVideo] = useState(false);
-  const [videoEngine, setVideoEngine] = useState<"seedance_1_5" | "veo_3_1" | "kling_3_0">("kling_3_0");
-  const [useLastFrame, setUseLastFrame] = useState(false);
-  const [editingPrompt, setEditingPrompt] = useState(false);
-  const [editedVideoPrompt, setEditedVideoPrompt] = useState(shot.videoPrompt || "");
-  const [selectedRefAssets, setSelectedRefAssets] = useState<number[]>([]);
-  const [showAssetPicker, setShowAssetPicker] = useState(false);
-
-  // 加载项目资产（人物+场景）
-  const { data: charAssets } = trpc.overseas.listAssets.useQuery({ projectId: shot.projectId, type: "character" }, { enabled: expanded });
-  const { data: sceneAssets } = trpc.overseas.listAssets.useQuery({ projectId: shot.projectId, type: "scene" }, { enabled: expanded });
-  const allAssets = [...(charAssets ?? []), ...(sceneAssets ?? [])] as OverseasAsset[];
-  const selectedAssetUrls = selectedRefAssets
-    .map(id => allAssets.find(a => a.id === id))
-    .filter(Boolean)
-    .map(a => a!.mainImageUrl || a!.mjImageUrl)
-    .filter(Boolean) as string[];
-
-  const generateFrame = trpc.overseas.generateFrame.useMutation({
-    onSuccess: () => { onRefresh(); },
-    onError: (e) => toast.error(e.message),
-    onSettled: () => { setGeneratingFirstFrame(false); setGeneratingLastFrame(false); },
-  });
-
-  const generateVideoPrompt = trpc.overseas.generateVideoPrompt.useMutation({
-    onSuccess: () => { toast.success("视频提示词已生成"); onRefresh(); setGeneratingVideoPrompt(false); },
-    onError: (e) => { toast.error(e.message); setGeneratingVideoPrompt(false); },
-  });
-
-  const generateVideo = trpc.overseas.generateVideo.useMutation({
-    onSuccess: () => { toast.success("视频生成完成！"); onRefresh(); setGeneratingVideo(false); },
-    onError: (e) => { toast.error(`视频生成失败：${e.message}`); onRefresh(); setGeneratingVideo(false); },
-  });
-
-  const updateShot = trpc.overseas.updateShot.useMutation({
-    onSuccess: () => { onRefresh(); setEditingPrompt(false); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const statusCfg = SHOT_STATUS_CONFIG[shot.status];
-  const aspectRatio = project.aspectRatio === "portrait" ? "9:16" : "16:9";
-
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${expanded ? C.amber : C.border}`, borderRadius: 12, overflow: "hidden", transition: "border-color 0.2s" }}>
-      {/* 卡片头部 */}
-      <div
-        style={{ padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
-        onClick={onToggle}
-      >
-        {/* 镜号 */}
-        <div style={{ width: 36, height: 36, borderRadius: 8, background: "oklch(0.18 0.006 240)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: C.amber }}>
-            {String(shot.shotNumber).padStart(2, "0")}
-          </span>
-        </div>
-
-        {/* 信息 */}
-        <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{shot.sceneName || `镜头 ${shot.shotNumber}`}</span>
-            {shot.shotType && <span style={{ fontSize: 10, padding: "1px 6px", background: "oklch(0.18 0.006 240)", borderRadius: 4, color: C.muted }}>{shot.shotType}</span>}
-            {shot.emotion && <span style={{ fontSize: 10, padding: "1px 6px", background: "oklch(0.18 0.006 240)", borderRadius: 4, color: C.muted }}>{shot.emotion}</span>}
-          </div>
-          <p style={{ fontSize: 12, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
-            {shot.visualDescription || "无描述"}
-          </p>
-        </div>
-
-        {/* 状态指示器 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {/* 资产状态点 */}
-          <div style={{ display: "flex", gap: 4 }}>
-            <div title="首帧" style={{ width: 8, height: 8, borderRadius: "50%", background: shot.firstFrameUrl ? C.green : C.border }} />
-            <div title="视频" style={{ width: 8, height: 8, borderRadius: "50%", background: shot.videoUrl ? C.green : C.border }} />
-          </div>
-          <span style={{ fontSize: 11, color: statusCfg.color, fontFamily: "'JetBrains Mono', monospace" }}>{statusCfg.label}</span>
-          {expanded ? <ChevronUp size={14} style={{ color: C.muted }} /> : <ChevronDown size={14} style={{ color: C.muted }} />}
-        </div>
-      </div>
-
-      {/* 展开内容 */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            style={{ overflow: "hidden" }}
-          >
-            <div style={{ borderTop: `1px solid ${C.border}`, padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* 视觉描述 */}
-              <div>
-                <label style={{ fontSize: 11, color: C.muted, marginBottom: 6, display: "block", letterSpacing: "0.05em", textTransform: "uppercase" }}>镜头视觉描述</label>
-                <p style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "10px 12px", background: "oklch(0.18 0.006 240)", borderRadius: 8 }}>
-                  {shot.visualDescription || "—"}
-                </p>
-              </div>
-
-              {/* 台词 */}
-              {shot.dialogue && (
-                <div>
-                  <label style={{ fontSize: 11, color: C.muted, marginBottom: 6, display: "block", letterSpacing: "0.05em", textTransform: "uppercase" }}>台词 / 旁白</label>
-                  <p style={{ fontSize: 13, color: "oklch(0.78 0.01 240)", lineHeight: 1.6, padding: "10px 12px", background: "oklch(0.18 0.006 240)", borderRadius: 8, fontStyle: "italic" }}>
-                    "{shot.dialogue}"
-                  </p>
-                </div>
-              )}
-
-              {/* STEP 1: 首帧 + 尾帧 */}
-              <div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                  <label style={{ fontSize: 11, color: C.muted, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                    STEP 1 — 首帧图片（Nano Banana Pro）
-                  </label>
-                  {/* 资产引用选择器 */}
-                  <button
-                    onClick={() => setShowAssetPicker(!showAssetPicker)}
-                    style={{
-                      fontSize: 10, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
-                      background: selectedRefAssets.length > 0 ? "oklch(0.75 0.17 65 / 0.15)" : "transparent",
-                      border: `1px solid ${selectedRefAssets.length > 0 ? C.amber : C.border}`,
-                      color: selectedRefAssets.length > 0 ? C.amber : C.muted,
-                      display: "flex", alignItems: "center", gap: 4,
-                    }}
-                  >
-                    <Users size={10} />
-                    {selectedRefAssets.length > 0 ? `已选 ${selectedRefAssets.length} 个资产` : "选择参考资产"}
-                  </button>
-                </div>
-
-                {/* 资产选择展开区 */}
-                {showAssetPicker && allAssets.length > 0 && (
-                  <div style={{ marginBottom: 10, padding: "10px", background: "oklch(0.16 0.006 240)", borderRadius: 8, border: `1px solid ${C.border}` }}>
-                    <p style={{ fontSize: 10, color: C.muted, marginBottom: 8 }}>选择人物/场景参考图（最多 3 个），生成首帧时会作为参考</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {allAssets.map(asset => {
-                        const thumbUrl = asset.mainImageUrl || asset.mjImageUrl;
-                        const isSelected = selectedRefAssets.includes(asset.id);
-                        return (
-                          <button
-                            key={asset.id}
-                            onClick={() => {
-                              if (isSelected) {
-                                setSelectedRefAssets(prev => prev.filter(id => id !== asset.id));
-                              } else if (selectedRefAssets.length < 3) {
-                                setSelectedRefAssets(prev => [...prev, asset.id]);
-                              } else {
-                                toast.error("最多选择 3 个参考资产");
-                              }
-                            }}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 5, padding: "4px 8px",
-                              borderRadius: 6, cursor: "pointer",
-                              background: isSelected ? "oklch(0.75 0.17 65 / 0.15)" : "oklch(0.18 0.006 240)",
-                              border: `1px solid ${isSelected ? C.amber : C.border}`,
-                              color: isSelected ? C.amber : C.muted, fontSize: 11,
-                            }}
-                          >
-                            {thumbUrl && <img src={thumbUrl} alt={asset.name} style={{ width: 20, height: 20, borderRadius: 3, objectFit: "cover" }} />}
-                            <span>{asset.name}</span>
-                            <span style={{ fontSize: 9, opacity: 0.6 }}>{asset.type === "character" ? "人" : "场"}</span>
-                            {isSelected && <Check size={10} />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {showAssetPicker && allAssets.length === 0 && (
-                  <div style={{ marginBottom: 10, padding: "8px 10px", background: "oklch(0.16 0.006 240)", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
-                    尚无资产，请先在「资产库」 Tab 中添加人物/场景资产
-                  </div>
-                )}
-
-                <div style={{ maxWidth: 320 }}>
-                  {/* 首帧 */}
-                  <FramePanel
-                    label="首帧"
-                    url={shot.firstFrameUrl}
-                    prompt={shot.firstFramePrompt}
-                    aspectRatio={aspectRatio}
-                    generating={generatingFirstFrame}
-                    onGenerate={() => {
-                      setGeneratingFirstFrame(true);
-                      generateFrame.mutate({ shotId: shot.id, frameType: "first", referenceImageUrls: selectedAssetUrls.length > 0 ? selectedAssetUrls : undefined });
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* STEP 2: 视频提示词 */}
-              <div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <label style={{ fontSize: 11, color: C.muted, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                    STEP 2 — 视频提示词
-                  </label>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {shot.videoPrompt && !editingPrompt && (
-                      <>
-                        <button onClick={() => { navigator.clipboard.writeText(shot.videoPrompt!); toast.success("已复制"); }} style={{ fontSize: 11, color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
-                          <Copy size={11} /> 复制
-                        </button>
-                        <button onClick={() => { setEditedVideoPrompt(shot.videoPrompt!); setEditingPrompt(true); }} style={{ fontSize: 11, color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
-                          <Edit3 size={11} /> 编辑
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {editingPrompt ? (
-                  <div>
-                    <Textarea
-                      value={editedVideoPrompt}
-                      onChange={e => setEditedVideoPrompt(e.target.value)}
-                      rows={4}
-                      style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, fontSize: 13, marginBottom: 8 }}
-                    />
-                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                      <Button variant="outline" onClick={() => setEditingPrompt(false)} style={{ borderColor: C.border, color: C.muted, fontSize: 11, height: 28 }}>取消</Button>
-                      <Button onClick={() => updateShot.mutate({ id: shot.id, videoPrompt: editedVideoPrompt })} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontSize: 11, height: 28, fontWeight: 700 }}>保存</Button>
-                    </div>
-                  </div>
-                ) : shot.videoPrompt ? (
-                  <p style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "10px 12px", background: "oklch(0.18 0.006 240)", borderRadius: 8 }}>
-                    {shot.videoPrompt}
-                  </p>
-                ) : (
-                  <Button
-                    onClick={() => { setGeneratingVideoPrompt(true); generateVideoPrompt.mutate({ shotId: shot.id }); }}
-                    disabled={generatingVideoPrompt}
-                    variant="outline"
-                    style={{ borderColor: C.border, color: C.muted, fontSize: 12, gap: 6, width: "100%" }}
-                  >
-                    {generatingVideoPrompt ? <><Loader2 className="animate-spin w-3 h-3" /> 生成中...</> : <><Wand2 size={13} /> AI 生成视频提示词</>}
-                  </Button>
-                )}
-              </div>
-
-              {/* STEP 3: 视频生成 */}
-              <div>
-                <label style={{ fontSize: 11, color: C.muted, marginBottom: 10, display: "block", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                  STEP 3 — 视频生成
-                </label>
-
-                {shot.videoUrl ? (
-                  <div>
-                    <video
-                      src={shot.videoUrl}
-                      controls
-                      style={{ width: "100%", maxHeight: 240, borderRadius: 8, background: "#000" }}
-                    />
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      <a href={shot.videoUrl} download target="_blank" rel="noreferrer">
-                        <Button variant="outline" style={{ borderColor: C.border, color: C.muted, fontSize: 11, height: 28, gap: 4 }}>
-                          <Download size={11} /> 下载
-                        </Button>
-                      </a>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setGeneratingVideo(true);
-                          generateVideo.mutate({ shotId: shot.id, engine: videoEngine, aspectRatio: project.aspectRatio === "portrait" ? "9:16" : "16:9", useLastFrame });
-                        }}
-                        disabled={!shot.firstFrameUrl || !shot.videoPrompt || generatingVideo}
-                        style={{ borderColor: C.border, color: C.muted, fontSize: 11, height: 28, gap: 4 }}
-                      >
-                        <RefreshCw size={11} /> 重新生成
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {/* 引擎选择 */}
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {(["kling_3_0", "seedance_1_5", "veo_3_1"] as const).map(eng => (
-                        <button
-                          key={eng}
-                          onClick={() => setVideoEngine(eng)}
-                          style={{
-                            flex: 1, minWidth: 100, padding: "8px 12px", borderRadius: 8, border: `1px solid ${videoEngine === eng ? C.amber : C.border}`,
-                            background: videoEngine === eng ? "oklch(0.75 0.17 65 / 0.1)" : "transparent",
-                            color: videoEngine === eng ? C.amber : C.muted, cursor: "pointer", fontSize: 12, fontWeight: videoEngine === eng ? 700 : 400,
-                            transition: "all 0.15s",
-                          }}
-                        >
-                          {eng === "kling_3_0" ? "⚡ Kling 3.0" : eng === "seedance_1_5" ? "🎬 Seedance 1.5" : "🌐 Veo 3.1"}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* 引擎 Key 状态提示 */}
-                    {videoEngine === "kling_3_0" && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 8px", borderRadius: 6, background: "oklch(0.75 0.17 65 / 0.06)", border: "1px solid oklch(0.75 0.17 65 / 0.25)" }}>
-                        <span style={{ color: C.amber }}>⚡</span>
-                        <span style={{ color: "oklch(0.60 0.01 240)" }}>Kling 3.0 via Fal.ai，支持 Elements 参考图一致性，需要</span>
-                        <a href="/api-settings" style={{ color: C.amber, textDecoration: "underline" }}>Fal.ai API Key</a>
-                      </div>
-                    )}
-                    {videoEngine === "seedance_1_5" && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 8px", borderRadius: 6, background: "oklch(0.65 0.15 200 / 0.08)", border: "1px solid oklch(0.65 0.15 200 / 0.20)" }}>
-                        <span style={{ color: "oklch(0.65 0.15 200)" }}>ℹ️</span>
-                        <span style={{ color: "oklch(0.60 0.01 240)" }}>Seedance 1.5 需要 Fal.ai API Key，在</span>
-                        <a href="/api-settings" style={{ color: "oklch(0.65 0.15 200)", textDecoration: "underline" }}>AI 设置</a>
-                        <span style={{ color: "oklch(0.60 0.01 240)" }}>中配置</span>
-                      </div>
-                    )}
-                    {videoEngine === "veo_3_1" && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "5px 8px", borderRadius: 6, background: "oklch(0.65 0.20 145 / 0.08)", border: "1px solid oklch(0.65 0.20 145 / 0.20)" }}>
-                        <span style={{ color: "oklch(0.65 0.20 145)" }}>ℹ️</span>
-                        <span style={{ color: "oklch(0.60 0.01 240)" }}>Veo 3.1 使用 Gemini API Key，在</span>
-                        <a href="/api-settings" style={{ color: "oklch(0.65 0.15 200)", textDecoration: "underline" }}>AI 设置</a>
-                        <span style={{ color: "oklch(0.60 0.01 240)" }}>中切换至 Gemini 提供商并配置</span>
-                      </div>
-                    )}
-
-                    {/* 尾帧选项 */}
-                    {/* 尾帧选项已移除：跨量剧只使用首帧模式 */}
-
-                    {/* 生成按钮 */}
-                    {shot.status === "failed" && shot.errorMessage && (
-                      <div style={{ display: "flex", gap: 6, padding: "8px 10px", background: "oklch(0.65 0.22 25 / 0.1)", border: `1px solid oklch(0.65 0.22 25 / 0.3)`, borderRadius: 8, fontSize: 12, color: C.red }}>
-                        <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span>{shot.errorMessage}</span>
-                      </div>
-                    )}
-
-                    <Button
-                      onClick={() => {
-                        if (!shot.firstFrameUrl) { toast.error("请先生成首帧图片"); return; }
-                        if (!shot.videoPrompt) { toast.error("请先生成视频提示词"); return; }
-                        setGeneratingVideo(true);
-                        generateVideo.mutate({
-                          shotId: shot.id,
-                          engine: videoEngine,
-                          aspectRatio: project.aspectRatio === "portrait" ? "9:16" : "16:9",
-                          useLastFrame,
-                          referenceImageUrls: videoEngine === "kling_3_0" && selectedAssetUrls.length > 0 ? selectedAssetUrls : undefined,
-                        });
-                      }}
-                      disabled={generatingVideo || shot.status === "generating_video"}
-                      style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 13, gap: 6 }}
-                    >
-                      {generatingVideo || shot.status === "generating_video" ? (
-                        <><Loader2 className="animate-spin w-4 h-4" /> 生成视频中（约 1-3 分钟）...</>
-                      ) : (
-                        <><Video size={14} /> {videoEngine === "kling_3_0" ? "Kling 3.0 生成视频" : videoEngine === "seedance_1_5" ? "Seedance 生成视频" : "Veo 3.1 生成视频"}</>
-                      )}
-                    </Button>
-
-                    {!shot.firstFrameUrl && (
-                      <p style={{ fontSize: 11, color: C.muted, textAlign: "center" }}>⚠️ 需先生成首帧图片</p>
-                    )}
-                    {shot.firstFrameUrl && !shot.videoPrompt && (
-                      <p style={{ fontSize: 11, color: C.muted, textAlign: "center" }}>⚠️ 需先生成视频提示词</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ─── 帧图片面板 ────────────────────────────────────────────────────────────────
-
-function FramePanel({ label, url, prompt, aspectRatio, generating, onGenerate }: {
-  label: string;
-  url: string | null;
-  prompt: string | null;
-  aspectRatio: string;
-  generating: boolean;
-  onGenerate: () => void;
-}) {
-  const isPortrait = aspectRatio === "9:16";
-  const imgStyle = {
-    width: "100%",
-    aspectRatio: isPortrait ? "9/16" : "16/9",
-    objectFit: "cover" as const,
-    borderRadius: 8,
-    maxHeight: isPortrait ? 240 : 135,
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, color: C.muted }}>{label}</span>
-        {url && (
-          <a href={url} download target="_blank" rel="noreferrer">
-            <button style={{ fontSize: 10, color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", gap: 2 }}>
-              <Download size={10} /> 下载
-            </button>
-          </a>
-        )}
-      </div>
-
-      {url ? (
-        <div>
-          <img src={url} alt={label} style={imgStyle} />
-          {prompt && (
-            <p style={{ fontSize: 10, color: "oklch(0.40 0.01 240)", marginTop: 4, lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
-              {prompt}
-            </p>
-          )}
-          <Button
-            variant="outline"
-            onClick={onGenerate}
-            disabled={generating}
-            style={{ borderColor: C.border, color: C.muted, fontSize: 10, height: 24, gap: 3, marginTop: 6, width: "100%" }}
-          >
-            {generating ? <Loader2 className="animate-spin w-3 h-3" /> : <RefreshCw size={10} />} 重新生成
-          </Button>
-        </div>
-      ) : (
-        <div
-          style={{
-            width: "100%", aspectRatio: isPortrait ? "9/16" : "16/9", maxHeight: isPortrait ? 240 : 135,
-            background: "oklch(0.18 0.006 240)", border: `1px dashed ${C.border}`, borderRadius: 8,
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer",
-          }}
-          onClick={!generating ? onGenerate : undefined}
-        >
-          {generating ? (
-            <><Loader2 className="animate-spin w-5 h-5" style={{ color: C.amber }} /><span style={{ fontSize: 11, color: C.muted }}>生成中...</span></>
-          ) : (
-            <><ImageIcon size={20} style={{ color: C.muted }} /><span style={{ fontSize: 11, color: C.muted }}>点击生成{label}</span></>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── 批量跑量面板 ──────────────────────────────────────────────────────────────
-
-function BatchRunPanel({
-  projectId,
-  project,
-  onClose,
-  onComplete,
-}: {
-  projectId: number;
-  project: OverseasProject;
-  onClose: () => void;
-  onComplete: () => void;
-}) {
-  const C = {
-    text: "oklch(0.92 0.005 240)",
-    muted: "oklch(0.55 0.008 240)",
-    amber: "oklch(0.75 0.17 65)",
-    border: "oklch(0.25 0.008 240)",
-    bg: "oklch(0.13 0.005 240)",
-    surface: "oklch(0.17 0.006 240)",
-    surface2: "oklch(0.20 0.007 240)",
-  };
-  const [engine, setEngine] = useState<"kling_3_0" | "seedance_1_5" | "veo_3_1">("kling_3_0");
-  const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">(project.aspectRatio === "portrait" ? "9:16" : "16:9");
-  const [duration, setDuration] = useState<5 | 10>(5);
-  const [generateAudio, setGenerateAudio] = useState(false);
-  const [skipExisting, setSkipExisting] = useState(true);
-  const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([1]);
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<{ total: number; processed: number; failed: number; errors: Array<{ shotId: number; episodeNumber: number; shotNumber: number; error: string }> } | null>(null);
-
-  // 资产列表（用于显示全局参考图状态）
-  const { data: assetsData, refetch: refetchAssets } = trpc.overseas.listAssets.useQuery({ projectId });
-  const updateAsset = trpc.overseas.updateAsset.useMutation({ onSuccess: () => refetchAssets() });
-
-  const batchRun = trpc.overseas.batchRun.useMutation({
-    onSuccess: (res) => {
-      setResult(res);
-      setRunning(false);
-      toast.success(`批量跑量完成！共 ${res.processed} 个首帧+视频已生成，${res.failed} 个失败`);
-    },
-    onError: (err) => {
-      setRunning(false);
-      toast.error("批量跑量失败: " + err.message);
-    },
-  });
-
-  const globalRefAssets = assetsData?.filter((a) => a.isGlobalRef) ?? [];
-  const allAssets = assetsData ?? [];
-
-  const episodeOptions = Array.from({ length: project.totalEpisodes || 10 }, (_, i) => i + 1);
-
-  const handleStart = () => {
-    if (selectedEpisodes.length === 0) { toast.error("请选择要跑量的集数"); return; }
-    setRunning(true);
-    setResult(null);
-    batchRun.mutate({
-      projectId,
-      episodeNumbers: selectedEpisodes,
-      engine,
-      aspectRatio,
-      duration,
-      generateAudio,
-      skipExisting,
-    });
-  };
-
-  return (
-    <div style={{
-      marginBottom: 20, padding: "20px 24px", background: "oklch(0.14 0.006 240)",
-      border: `2px solid ${C.amber}`, borderRadius: 14,
-    }}>
-      {/* 标题行 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Zap size={18} style={{ color: C.amber }} />
-          <span style={{ fontSize: 16, fontWeight: 700, color: C.text, fontFamily: "'Space Grotesk', sans-serif" }}>
-            批量跑量看板
-          </span>
-          <span style={{ fontSize: 11, color: C.muted, padding: "2px 8px", borderRadius: 20, background: "oklch(0.75 0.17 65 / 0.1)", border: `1px solid oklch(0.75 0.17 65 / 0.3)` }}>
-            首帧 → 视频提示词 → 视频 全自动
-          </span>
-        </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, padding: 4 }}>
-          <X size={16} />
-        </button>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        {/* 左列：配置 */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* 引擎选择 */}
-          <div>
-            <div style={{ fontSize: 11, color: C.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>视频引擎</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              {(["kling_3_0", "seedance_1_5", "veo_3_1"] as const).map(eng => (
-                <button key={eng} onClick={() => setEngine(eng)} style={{
-                  flex: 1, padding: "8px 6px", borderRadius: 8,
-                  border: `1px solid ${engine === eng ? C.amber : C.border}`,
-                  background: engine === eng ? "oklch(0.75 0.17 65 / 0.12)" : "transparent",
-                  color: engine === eng ? C.amber : C.muted, cursor: "pointer", fontSize: 11, fontWeight: engine === eng ? 700 : 400,
-                }}>
-                  {eng === "kling_3_0" ? "⚡ Kling 3.0" : eng === "seedance_1_5" ? "🎬 Seedance" : "🌐 Veo 3.1"}
-                </button>
-              ))}
-            </div>
-            {engine === "kling_3_0" && (
-              <div style={{ marginTop: 6, fontSize: 11, color: "oklch(0.65 0.12 65)", padding: "5px 8px", borderRadius: 6, background: "oklch(0.75 0.17 65 / 0.06)", border: "1px solid oklch(0.75 0.17 65 / 0.2)" }}>
-                ⚡ Kling 3.0 将自动把标记为「全局参考」的资产图作为 Elements 参考图，实现人物一致性
-              </div>
-            )}
-          </div>
-
-          {/* 视频参数 */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>画面比例</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["9:16", "16:9"] as const).map(r => (
-                  <button key={r} onClick={() => setAspectRatio(r)} style={{
-                    flex: 1, padding: "6px 4px", borderRadius: 6,
-                    border: `1px solid ${aspectRatio === r ? C.amber : C.border}`,
-                    background: aspectRatio === r ? "oklch(0.75 0.17 65 / 0.1)" : "transparent",
-                    color: aspectRatio === r ? C.amber : C.muted, cursor: "pointer", fontSize: 11,
-                  }}>{r}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>时长</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {([5, 10] as const).map(d => (
-                  <button key={d} onClick={() => setDuration(d)} style={{
-                    flex: 1, padding: "6px 4px", borderRadius: 6,
-                    border: `1px solid ${duration === d ? C.amber : C.border}`,
-                    background: duration === d ? "oklch(0.75 0.17 65 / 0.1)" : "transparent",
-                    color: duration === d ? C.amber : C.muted, cursor: "pointer", fontSize: 11,
-                  }}>{d}s</button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 选集 */}
-          <div>
-            <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>选择要跑量的集（可多选）</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {episodeOptions.map(ep => (
-                <button key={ep} onClick={() => {
-                  setSelectedEpisodes(prev =>
-                    prev.includes(ep) ? prev.filter(e => e !== ep) : [...prev, ep]
-                  );
-                }} style={{
-                  padding: "4px 12px", borderRadius: 20,
-                  border: `1px solid ${selectedEpisodes.includes(ep) ? C.amber : C.border}`,
-                  background: selectedEpisodes.includes(ep) ? "oklch(0.75 0.17 65 / 0.15)" : "transparent",
-                  color: selectedEpisodes.includes(ep) ? C.amber : C.muted, cursor: "pointer", fontSize: 12,
-                }}>
-                  第{ep}集
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 其他选项 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: C.muted }}>
-              <input type="checkbox" checked={skipExisting} onChange={e => setSkipExisting(e.target.checked)}
-                style={{ accentColor: C.amber, width: 14, height: 14 }} />
-              跳过已完成的镜头（断点续跑）
-            </label>
-            {engine === "seedance_1_5" && (
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: C.muted }}>
-                <input type="checkbox" checked={generateAudio} onChange={e => setGenerateAudio(e.target.checked)}
-                  style={{ accentColor: C.amber, width: 14, height: 14 }} />
-                生成音频（Seedance）
-              </label>
-            )}
-          </div>
-        </div>
-
-        {/* 右列：Elements 参考图管理 */}
-        <div>
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            {engine === "kling_3_0" ? "⚡ Kling Elements 参考图（人物一致性）" : "全局参考图资产"}
-          </div>
-          <div style={{ fontSize: 11, color: "oklch(0.50 0.01 240)", marginBottom: 10 }}>
-            {engine === "kling_3_0"
-              ? "将下方资产图片标记为「全局参考」，Kling 3.0 将其作为 Elements 参考图保持人物外貌一致性"
-              : "将资产标记为全局参考后，首帧生成时会自动带入该图片"}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
-            {allAssets.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 12 }}>
-                还没有资产，请先在「资产库」阶段上传 MJ 参考图
-              </div>
-            ) : (
-              allAssets.map(asset => {
-                const imgUrl = asset.mainImageUrl || asset.mjImageUrl;
-                return (
-                  <div key={asset.id} style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8,
-                    border: `1px solid ${asset.isGlobalRef ? C.amber : C.border}`,
-                    background: asset.isGlobalRef ? "oklch(0.75 0.17 65 / 0.06)" : "oklch(0.16 0.006 240)",
-                    cursor: "pointer",
-                  }}
-                    onClick={() => updateAsset.mutate({ id: asset.id, isGlobalRef: !asset.isGlobalRef })}
-                  >
-                    {imgUrl ? (
-                      <img src={imgUrl} alt={asset.name} style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
-                    ) : (
-                      <div style={{ width: 36, height: 36, borderRadius: 6, background: "oklch(0.22 0.006 240)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <ImageIcon size={14} style={{ color: C.muted }} />
-                      </div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</div>
-                      <div style={{ fontSize: 10, color: C.muted }}>{asset.type === "character" ? "👤 人物" : asset.type === "scene" ? "🌄 场景" : "📦 道具"}</div>
-                    </div>
-                    <div style={{
-                      padding: "3px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700,
-                      background: asset.isGlobalRef ? "oklch(0.75 0.17 65 / 0.2)" : "oklch(0.22 0.006 240)",
-                      color: asset.isGlobalRef ? C.amber : C.muted,
-                      border: `1px solid ${asset.isGlobalRef ? C.amber : C.border}`,
-                    }}>
-                      {asset.isGlobalRef ? "✓ 全局参考" : "未选"}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-          {globalRefAssets.length > 0 && (
-            <div style={{ marginTop: 10, padding: "6px 10px", borderRadius: 6, background: "oklch(0.75 0.17 65 / 0.08)", border: "1px solid oklch(0.75 0.17 65 / 0.25)", fontSize: 11, color: C.amber }}>
-              ✓ {globalRefAssets.length} 张参考图将作为{engine === "kling_3_0" ? " Elements" : ""}带入每个镜头
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 运行结果 */}
-      {result && (
-        <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, background: result.failed > 0 ? "oklch(0.65 0.18 30 / 0.08)" : "oklch(0.65 0.20 145 / 0.08)", border: `1px solid ${result.failed > 0 ? "oklch(0.65 0.18 30 / 0.3)" : "oklch(0.65 0.20 145 / 0.3)"}` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: result.failed > 0 ? "oklch(0.75 0.18 30)" : "oklch(0.65 0.20 145)", marginBottom: 6 }}>
-            跑量完成：共 {result.total} 个镜头，成功 {result.processed} 个，失败 {result.failed} 个
-          </div>
-          {result.errors.length > 0 && (
-            <div style={{ maxHeight: 120, overflowY: "auto" }}>
-              {result.errors.map((e, i) => (
-                <div key={i} style={{ fontSize: 11, color: "oklch(0.75 0.18 30)", marginBottom: 3 }}>
-                  第{e.episodeNumber}集镜头{e.shotNumber}: {e.error}
-                </div>
-              ))}
-            </div>
-          )}
-          <Button onClick={onComplete} style={{ marginTop: 8, background: "oklch(0.65 0.20 145)", color: "white", fontSize: 12, gap: 6 }}>
-            <CheckSquare size={12} /> 关闭并刷新
-          </Button>
-        </div>
-      )}
-
-      {/* 开始按鈕 */}
-      {!result && (
-        <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center" }}>
-          <Button
-            onClick={handleStart}
-            disabled={running || selectedEpisodes.length === 0}
-            style={{
-              background: running ? "oklch(0.30 0.01 240)" : "oklch(0.75 0.17 65)",
-              color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 14, gap: 8,
-              padding: "10px 24px", borderRadius: 10,
-            }}
-          >
-            {running ? (
-              <><Loader2 className="animate-spin w-4 h-4" /> 跑量中（可能需要数分钟）...</>
-            ) : (
-              <><Zap size={16} /> 开始批量跑量（{selectedEpisodes.length} 集）</>
-            )}
-          </Button>
-          {running && (
-            <span style={{ fontSize: 12, color: C.muted }}>
-              正在串行处理分镇表，请勿关闭页面...
-            </span>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── 出海短剧资产管理面板 ──────────────────────────────────────────────
-
-function OverseasAssetPanel({ projectId, project, compact }: { projectId: number; project: OverseasProject; compact?: boolean }) {
-  const [assetTab, setAssetTab] = useState<"character" | "scene" | "prop">("character");
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [expandedAsset, setExpandedAsset] = useState<number | null>(null);
-
-  const { data: assets, isLoading, refetch } = trpc.overseas.listAssets.useQuery({ projectId, type: assetTab });
-
-  const createAsset = trpc.overseas.createAsset.useMutation({
-    onSuccess: () => { refetch(); setShowAddDialog(false); setNewName(""); setNewDesc(""); toast.success("资产已创建"); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const deleteAsset = trpc.overseas.deleteAsset.useMutation({
-    onSuccess: () => { refetch(); toast.success("已删除"); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const ASSET_TABS = [
-    { key: "character" as const, label: "人物", icon: <Users size={13} /> },
-    { key: "scene" as const, label: "场景", icon: <MapPin size={13} /> },
-    { key: "prop" as const, label: "道具", icon: <Package size={13} /> },
+  const tabs: { key: WorkflowTab; label: string }[] = [
+    { key: "script", label: "剧本" },
+    { key: "subject", label: "主体" },
+    { key: "storyboard", label: "故事版" },
   ];
 
   return (
-    <div style={{ padding: compact ? "0.75rem" : "1.5rem" }}>
-      {/* 资产类型 Tab */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 4 }}>
-          {ASSET_TABS.map(t => (
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column" }}>
+      {/* Top Bar */}
+      <div style={{
+        height: 52, display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 20px", borderBottom: `1px solid ${C.border}`,
+        background: C.surface, flexShrink: 0,
+      }}>
+        {/* Left: Back + Project Name */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            onClick={onBack}
+            style={{ display: "flex", alignItems: "center", gap: 4, color: C.muted, cursor: "pointer", background: "none", border: "none", fontSize: 12, padding: "4px 8px", borderRadius: 6 }}
+          >
+            <ChevronLeft size={14} /> 返回
+          </button>
+          <span style={{ color: C.border }}>|</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{project.name}</span>
+          <span style={{ fontSize: 11, color: C.muted, fontFamily: "'JetBrains Mono', monospace" }}>
+            {MARKET_OPTIONS.find(m => m.value === project.market)?.label}
+          </span>
+        </div>
+
+        {/* Center: Tab Navigation */}
+        <div style={{ display: "flex", gap: 2, background: "oklch(0.10 0.005 240)", borderRadius: 8, padding: 3 }}>
+          {tabs.map(tab => (
             <button
-              key={t.key}
-              onClick={() => setAssetTab(t.key)}
+              key={tab.key}
+              onClick={() => onTabChange(tab.key)}
               style={{
-                padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
-                background: assetTab === t.key ? "oklch(0.75 0.17 65 / 0.15)" : "transparent",
-                border: `1px solid ${assetTab === t.key ? C.amber : C.border}`,
-                color: assetTab === t.key ? C.amber : C.muted,
-                display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
+                padding: "5px 20px", borderRadius: 6, cursor: "pointer", border: "none",
+                fontSize: 13, fontWeight: 500, transition: "all 0.15s",
+                background: activeTab === tab.key ? C.green : "transparent",
+                color: activeTab === tab.key ? "oklch(0.08 0.005 240)" : C.muted,
               }}
             >
-              {t.icon} {t.label}
+              {tab.label}
             </button>
           ))}
         </div>
-        <Button
-          onClick={() => setShowAddDialog(true)}
-          style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, fontSize: 12, gap: 5 }}
-        >
-          <Plus size={13} /> 添加{ASSET_TABS.find(t => t.key === assetTab)?.label}
-        </Button>
+
+        {/* Right: Actions */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={{ display: "flex", alignItems: "center", gap: 4, color: C.muted, cursor: "pointer", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, padding: "4px 10px" }}>
+            <FileDown size={12} /> 导出 Excel
+          </button>
+          <button style={{ display: "flex", alignItems: "center", gap: 4, color: C.muted, cursor: "pointer", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, padding: "4px 10px" }}>
+            <FileUp size={12} /> 导入 Excel
+          </button>
+        </div>
       </div>
 
-      {/* 资产列表 */}
-      {isLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "3rem 0" }}>
-          <Loader2 className="animate-spin w-6 h-6" style={{ color: C.amber }} />
-        </div>
-      ) : !assets || assets.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "4rem 0", border: `1px dashed ${C.border}`, borderRadius: 16 }}>
-          {assetTab === "character" ? <Users size={36} style={{ color: C.muted, margin: "0 auto 12px" }} /> :
-           assetTab === "scene" ? <MapPin size={36} style={{ color: C.muted, margin: "0 auto 12px" }} /> :
-           <Package size={36} style={{ color: C.muted, margin: "0 auto 12px" }} />}
-          <p style={{ color: C.muted, marginBottom: 8 }}>还没有{ASSET_TABS.find(t => t.key === assetTab)?.label}资产</p>
-          <p style={{ fontSize: 12, color: "oklch(0.40 0.01 240)", marginBottom: 20 }}>
-            {assetTab === "character" ? "添加主要角色，上传 MJ 参考图后生成一致性参考图" :
-             assetTab === "scene" ? "添加主要场景，生成场景参考图用于首帧一致性" :
-             "添加道具资产，生成道具参考图"}
-          </p>
-          <Button onClick={() => setShowAddDialog(true)} style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700, gap: 6 }}>
-            <Plus size={14} /> 添加{ASSET_TABS.find(t => t.key === assetTab)?.label}
-          </Button>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-          {(assets as OverseasAsset[]).map(asset => (
-            <OverseasAssetCard
-              key={asset.id}
-              asset={asset}
-              project={project}
-              expanded={expandedAsset === asset.id}
-              onToggle={() => setExpandedAsset(expandedAsset === asset.id ? null : asset.id)}
-              onDelete={() => deleteAsset.mutate({ id: asset.id })}
-              onRefresh={refetch}
-            />
-          ))}
-        </div>
-      )}
+      {/* Content */}
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <AnimatePresence mode="wait">
+          {activeTab === "script" && (
+            <motion.div key="script" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} style={{ height: "100%" }}>
+              <ScriptTab projectId={projectId} project={project} activeEpisode={activeEpisode} onEpisodeChange={onEpisodeChange} />
+            </motion.div>
+          )}
+          {activeTab === "subject" && (
+            <motion.div key="subject" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} style={{ height: "100%" }}>
+              <SubjectTab projectId={projectId} project={project} />
+            </motion.div>
+          )}
+          {activeTab === "storyboard" && (
+            <motion.div key="storyboard" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} style={{ height: "100%", overflow: "hidden" }}>
+              <StoryboardTab projectId={projectId} project={project} activeEpisode={activeEpisode} onEpisodeChange={onEpisodeChange} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
 
-      {/* 添加资产对话框 */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent style={{ background: C.surface, border: `1px solid ${C.border}`, color: C.text }}>
-          <DialogHeader>
-            <DialogTitle style={{ color: C.text }}>
-              添加{ASSET_TABS.find(t => t.key === assetTab)?.label}
-            </DialogTitle>
-          </DialogHeader>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>名称 *</label>
-              <Input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder={assetTab === "character" ? "如：ALEX（主角）" : assetTab === "scene" ? "如：INT. CLASSROOM - DAY" : "如：Magic Sword"}
-                style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }}
-              />
+// ─── 剧本 Tab ─────────────────────────────────────────────────────────────────
+function ScriptTab({ projectId, project, activeEpisode, onEpisodeChange }: {
+  projectId: number;
+  project: OverseasProject;
+  activeEpisode: number;
+  onEpisodeChange: (ep: number) => void;
+}) {
+  const [showScriptInput, setShowScriptInput] = useState(false);
+  const [scriptText, setScriptText] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [selectedShotIds, setSelectedShotIds] = useState<Set<number>>(new Set());
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const totalEpisodes = project.totalEpisodes ?? 20;
+  const { data: shotsData, refetch } = trpc.overseas.listShots.useQuery({ projectId, episodeNumber: activeEpisode });
+  const shots = (shotsData ?? []) as ScriptShot[];
+
+  const parseScript = trpc.overseas.parseScript.useMutation({
+    onSuccess: () => { toast.success("分镜拆解完成"); setShowScriptInput(false); setScriptText(""); setGenerating(false); refetch(); },
+    onError: (e: { message: string }) => { toast.error(e.message); setGenerating(false); },
+  });
+
+  const deleteShot = trpc.overseas.deleteShot.useMutation({
+    onSuccess: () => { toast.success("已删除"); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleGenerate = () => {
+    if (!scriptText.trim()) { toast.error("请输入剧本内容"); return; }
+    setGenerating(true);
+    parseScript.mutate({ projectId, episodeNumber: activeEpisode, scriptText });
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedShotIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedShotIds(new Set(shots.map(s => s.id)));
+  const clearSelect = () => setSelectedShotIds(new Set());
+
+  return (
+    <div style={{ display: "flex", height: "calc(100vh - 52px)", overflow: "hidden" }}>
+      {/* Episode Sidebar */}
+      <div style={{
+        width: 64, background: C.surface, borderRight: `1px solid ${C.border}`,
+        display: "flex", flexDirection: "column", alignItems: "center", padding: "12px 0", gap: 4,
+        overflowY: "auto", flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 9, color: C.muted, letterSpacing: "0.05em", marginBottom: 4, textTransform: "uppercase" }}>集</span>
+        {Array.from({ length: totalEpisodes }, (_, i) => i + 1).map(ep => (
+          <button
+            key={ep}
+            onClick={() => onEpisodeChange(ep)}
+            style={{
+              width: 40, height: 32, borderRadius: 6, cursor: "pointer", border: "none",
+              background: activeEpisode === ep ? C.green : "transparent",
+              color: activeEpisode === ep ? "oklch(0.08 0.005 240)" : C.muted,
+              fontSize: 12, fontWeight: activeEpisode === ep ? 700 : 400,
+              transition: "all 0.15s",
+            }}
+          >
+            {ep}
+          </button>
+        ))}
+      </div>
+
+      {/* Main Content */}
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Toolbar */}
+        <div style={{
+          padding: "10px 20px", borderBottom: `1px solid ${C.border}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: C.surface, flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>第 {activeEpisode} 集</span>
+            <span style={{ fontSize: 11, color: C.muted }}>共 {shots.length} 个镜头</span>
+            {selectedShotIds.size > 0 && (
+              <span style={{ fontSize: 11, color: C.green }}>已选 {selectedShotIds.size} 个</span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {shots.length > 0 && selectedShotIds.size === 0 && (
+              <button onClick={selectAll} style={{ fontSize: 11, color: C.muted, cursor: "pointer", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 10px" }}>
+                全选
+              </button>
+            )}
+            {selectedShotIds.size > 0 && (
+              <button onClick={clearSelect} style={{ fontSize: 11, color: C.muted, cursor: "pointer", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 10px" }}>
+                取消选择
+              </button>
+            )}
+            <Button
+              onClick={() => setShowScriptInput(true)}
+              style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, fontSize: 12, gap: 5, height: 32 }}
+            >
+              <Wand2 size={13} /> {shots.length > 0 ? "重新生成" : "导入剧本"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Shot List */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+          {shots.length === 0 && !showScriptInput ? (
+            <div style={{ textAlign: "center", padding: "60px 0", border: `1px dashed ${C.border}`, borderRadius: 12 }}>
+              <FileText size={40} style={{ color: C.mutedDim, margin: "0 auto 12px" }} />
+              <p style={{ color: C.muted, marginBottom: 6 }}>第 {activeEpisode} 集还没有分镜</p>
+              <p style={{ fontSize: 12, color: "oklch(0.35 0.008 240)", marginBottom: 20 }}>
+                导入剧本后，AI 自动拆解为分镜文字描述（每集 20-30 个镜头）
+              </p>
+              <Button onClick={() => setShowScriptInput(true)} style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, gap: 6 }}>
+                <Upload size={14} /> 导入第 {activeEpisode} 集剧本
+              </Button>
             </div>
-            <div>
-              <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>描述（可选）</label>
-              <Textarea
-                value={newDesc}
-                onChange={e => setNewDesc(e.target.value)}
-                placeholder={assetTab === "character" ? "外貌特征、服装、性格..." : assetTab === "scene" ? "场景氛围、光线、时间..." : "道具外观、材质、用途..."}
-                rows={3}
-                style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, fontSize: 13, resize: "none" }}
-              />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {shots.map(shot => (
+                <ScriptShotCard
+                  key={shot.id}
+                  shot={shot}
+                  selected={selectedShotIds.has(shot.id)}
+                  onToggleSelect={() => toggleSelect(shot.id)}
+                  onDelete={() => deleteShot.mutate({ id: shot.id })}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Actions */}
+        {shots.length > 0 && (
+          <div style={{
+            padding: "12px 20px", borderTop: `1px solid ${C.border}`,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: C.surface, flexShrink: 0,
+          }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button
+                variant="outline"
+                onClick={() => setShowScriptInput(true)}
+                style={{ fontSize: 12, borderColor: C.border, color: C.muted, height: 32, gap: 5 }}
+              >
+                <RefreshCw size={12} /> 重新生成
+              </Button>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button
+                style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, fontSize: 12, gap: 5, height: 32 }}
+                onClick={() => toast.info("请切换到「主体」Tab 管理角色/场景资产")}
+              >
+                下一步：主体 →
+              </Button>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Script Input Dialog */}
+      <Dialog open={showScriptInput} onOpenChange={setShowScriptInput}>
+        <DialogContent style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 680 }}>
+          <DialogHeader>
+            <DialogTitle style={{ color: C.text }}>导入第 {activeEpisode} 集剧本</DialogTitle>
+          </DialogHeader>
+          <div style={{ padding: "8px 0" }}>
+            <p style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+              粘贴剧本内容，AI 将自动拆解为分镜（每集 20-30 个镜头），严格按原剧本内容生成，不会添加原剧本没有的内容。
+            </p>
+            <Textarea
+              value={scriptText}
+              onChange={e => setScriptText(e.target.value)}
+              placeholder={`第${activeEpisode}集剧本内容...\n\n场景1：...\n人物对白：...\n动作描述：...`}
+              rows={14}
+              style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, resize: "none", fontSize: 13 }}
+            />
+            <p style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>字数：{scriptText.length}</p>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)} style={{ borderColor: C.border, color: C.muted }}>取消</Button>
+            <Button variant="outline" onClick={() => setShowScriptInput(false)} style={{ borderColor: C.border, color: C.muted }}>取消</Button>
             <Button
-              onClick={() => {
-                if (!newName.trim()) return;
-                createAsset.mutate({ projectId, type: assetTab, name: newName.trim(), description: newDesc.trim() || undefined });
-              }}
-              disabled={!newName.trim() || createAsset.isPending}
-              style={{ background: C.amber, color: "oklch(0.1 0.005 240)", fontWeight: 700 }}
+              onClick={handleGenerate}
+              disabled={!scriptText.trim() || generating}
+              style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, gap: 6 }}
             >
-              {createAsset.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : "创建"}
+              {generating ? <><Loader2 className="animate-spin w-4 h-4" /> AI 拆解中...</> : <><Wand2 size={14} /> 开始拆解</>}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1828,280 +667,1049 @@ function OverseasAssetPanel({ projectId, project, compact }: { projectId: number
   );
 }
 
-// ─── 资产卡片 ──────────────────────────────────────────────────────────────────
-
-function OverseasAssetCard({ asset, project, expanded, onToggle, onDelete, onRefresh }: {
-  asset: OverseasAsset;
-  project: OverseasProject;
-  expanded: boolean;
-  onToggle: () => void;
+// ─── 分镜卡片（剧本 Tab） ─────────────────────────────────────────────────────
+function ScriptShotCard({ shot, selected, onToggleSelect, onDelete }: {
+  shot: ScriptShot;
+  selected: boolean;
+  onToggleSelect: () => void;
   onDelete: () => void;
-  onRefresh: () => void;
 }) {
-  const [generatingMjPrompt, setGeneratingMjPrompt] = useState(false);
-  const [generatingMain, setGeneratingMain] = useState(false);
-  const [generatingFront, setGeneratingFront] = useState(false);
-  const [generatingSide, setGeneratingSide] = useState(false);
-  const [generatingBack, setGeneratingBack] = useState(false);
-  const [uploadingMj, setUploadingMj] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const isPortrait = project.aspectRatio === "portrait";
-  const isCharacter = asset.type === "character";
-
-  const genMjPrompt = trpc.overseas.generateAssetMjPrompt.useMutation({
-    onSuccess: (r) => { toast.success("MJ 提示词已生成"); onRefresh(); setGeneratingMjPrompt(false); },
-    onError: (e) => { toast.error(e.message); setGeneratingMjPrompt(false); },
-  });
-
-  const genImage = trpc.overseas.generateAssetImage.useMutation({
-    onSuccess: (r) => {
-      toast.success(`${r.viewType === "main" ? "主图" : r.viewType} 已生成`);
-      onRefresh();
-      setGeneratingMain(false); setGeneratingFront(false); setGeneratingSide(false); setGeneratingBack(false);
-    },
-    onError: (e) => {
-      toast.error(e.message);
-      setGeneratingMain(false); setGeneratingFront(false); setGeneratingSide(false); setGeneratingBack(false);
-    },
-  });
-
-  const updateAsset = trpc.overseas.updateAsset.useMutation({
-    onSuccess: () => { onRefresh(); setUploadingMj(false); },
-    onError: (e) => { toast.error(e.message); setUploadingMj(false); },
-  });
-
-  const handleMjUpload = async (file: File) => {
-    setUploadingMj(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const resp = await fetch("/api/upload-asset", { method: "POST", body: formData, credentials: "include" });
-      if (!resp.ok) throw new Error("上传失败");
-      const { url } = await resp.json();
-      updateAsset.mutate({ id: asset.id, mjImageUrl: url });
-    } catch (e: any) {
-      toast.error(e.message ?? "上传失败");
-      setUploadingMj(false);
-    }
-  };
+  const [expanded, setExpanded] = useState(false);
+  const shotTypes = shot.shotType ? shot.shotType.split(/[,，、\s]+/).filter(Boolean) : [];
+  const characters = shot.characters ? shot.characters.split(/[,，、\s]+/).filter(Boolean) : [];
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      {/* 卡片头部 */}
+    <div style={{
+      background: C.card, border: `1px solid ${selected ? C.green : C.border}`,
+      borderRadius: 10, overflow: "hidden", transition: "border-color 0.15s",
+    }}>
+      {/* Card Header */}
       <div
-        onClick={onToggle}
-        style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+        style={{ padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}
+        onClick={() => setExpanded(!expanded)}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* 缩略图 */}
-          <div style={{
-            width: 40, height: isCharacter ? 53 : (isPortrait ? 53 : 30),
-            borderRadius: 6, overflow: "hidden", background: "oklch(0.18 0.006 240)",
-            flexShrink: 0, border: `1px solid ${C.border}`,
-          }}>
-            {asset.mainImageUrl ? (
-              <img src={asset.mainImageUrl} alt={asset.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            ) : asset.mjImageUrl ? (
-              <img src={asset.mjImageUrl} alt={asset.name} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.5 }} />
-            ) : (
-              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <ImageIcon size={14} style={{ color: C.muted }} />
-              </div>
-            )}
-          </div>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 2 }}>{asset.name}</p>
-            <p style={{ fontSize: 11, color: C.muted, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: 160 }}>
-              {asset.description ?? "无描述"}
-            </p>
-          </div>
+        {/* Select checkbox */}
+        <button
+          onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+          style={{
+            width: 18, height: 18, borderRadius: 4, border: `2px solid ${selected ? C.green : C.border}`,
+            background: selected ? C.green : "transparent", cursor: "pointer", flexShrink: 0, marginTop: 2,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          {selected && <Check size={11} style={{ color: "oklch(0.08 0.005 240)" }} />}
+        </button>
+
+        {/* Shot Number */}
+        <div style={{
+          minWidth: 40, height: 24, borderRadius: 6, background: C.green,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 11, fontWeight: 700, color: "oklch(0.08 0.005 240)",
+          fontFamily: "'JetBrains Mono', monospace", flexShrink: 0,
+        }}>
+          {shot.episodeNumber}.{shot.shotNumber}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {asset.mainImageUrl && <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.green }} />}
-          {/* 全局参考开关 */}
+
+        {/* Shot Type Tags */}
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1 }}>
+          {shotTypes.map((t, i) => (
+            <span key={i} style={{
+              fontSize: 11, padding: "2px 8px", borderRadius: 4,
+              background: `${SHOT_TYPE_COLORS[t] ?? C.blue}20`,
+              color: SHOT_TYPE_COLORS[t] ?? C.blue,
+              border: `1px solid ${SHOT_TYPE_COLORS[t] ?? C.blue}50`,
+            }}>
+              {t}
+            </span>
+          ))}
+          {shot.sceneName && (
+            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "oklch(0.20 0.006 240)", color: C.muted }}>
+              {shot.sceneName}
+            </span>
+          )}
+        </div>
+
+        {/* Characters */}
+        {characters.length > 0 && (
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            {characters.map((c, i) => (
+              <span key={i} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: C.greenDim, color: C.green, border: `1px solid ${C.greenBorder}` }}>
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              updateAsset.mutate({ id: asset.id, isGlobalRef: !asset.isGlobalRef });
-            }}
-            style={{
-              padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, cursor: "pointer",
-              background: asset.isGlobalRef ? "oklch(0.75 0.17 65 / 0.2)" : "oklch(0.22 0.006 240)",
-              color: asset.isGlobalRef ? C.amber : C.muted,
-              border: `1px solid ${asset.isGlobalRef ? C.amber : C.border}`,
-              transition: "all 0.15s",
-            }}
+            onClick={e => { e.stopPropagation(); if (confirm("确认删除此镜头？")) onDelete(); }}
+            style={{ padding: 4, borderRadius: 4, cursor: "pointer", background: "transparent", color: C.muted, border: "none" }}
           >
-            {asset.isGlobalRef ? "⚡ Elements" : "参考"}
+            <Trash2 size={13} />
           </button>
           {expanded ? <ChevronUp size={14} style={{ color: C.muted }} /> : <ChevronDown size={14} style={{ color: C.muted }} />}
         </div>
       </div>
 
-      {/* 展开内容 */}
-      {expanded && (
-        <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* STEP 1: MJ 提示词 */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, fontFamily: "'JetBrains Mono', monospace" }}>STEP 1 · MJ 提示词</span>
-              <Button
-                variant="outline"
-                onClick={() => { setGeneratingMjPrompt(true); genMjPrompt.mutate({ assetId: asset.id, projectId: project.id }); }}
-                disabled={generatingMjPrompt}
-                style={{ borderColor: C.border, color: C.muted, fontSize: 10, height: 22, gap: 3 }}
-              >
-                {generatingMjPrompt ? <Loader2 className="animate-spin w-3 h-3" /> : <Sparkles size={10} />} AI 生成
-              </Button>
-            </div>
-            {asset.mjPrompt ? (
-              <div style={{ background: "oklch(0.18 0.006 240)", borderRadius: 8, padding: "8px 10px", fontSize: 11, color: C.muted, lineHeight: 1.5, position: "relative" }}>
-                <p style={{ marginBottom: 6 }}>{asset.mjPrompt}</p>
-                <button
-                  onClick={() => { navigator.clipboard.writeText(asset.mjPrompt!); toast.success("已复制"); }}
-                  style={{ fontSize: 10, color: C.amber, background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                >
-                  复制提示词
-                </button>
-              </div>
-            ) : (
-              <p style={{ fontSize: 11, color: "oklch(0.40 0.01 240)" }}>点击「AI 生成」自动生成 MJ 提示词，然后在 MJ 中生成参考图后上传</p>
-            )}
-          </div>
-
-          {/* STEP 2: 上传 MJ 图 */}
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, fontFamily: "'JetBrains Mono', monospace", display: "block", marginBottom: 8 }}>STEP 2 · 上传 MJ 参考图</span>
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                width: "100%", aspectRatio: isCharacter ? "9/16" : (isPortrait ? "9/16" : "16/9"),
-                maxHeight: isCharacter ? 200 : (isPortrait ? 200 : 120),
-                background: "oklch(0.18 0.006 240)", border: `1px dashed ${asset.mjImageUrl ? C.amber : C.border}`,
-                borderRadius: 8, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", overflow: "hidden", position: "relative",
-              }}
-            >
-              {asset.mjImageUrl ? (
-                <img src={asset.mjImageUrl} alt="MJ ref" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                <>
-                  {uploadingMj ? <Loader2 className="animate-spin w-5 h-5" style={{ color: C.amber }} /> : <Upload size={20} style={{ color: C.muted }} />}
-                  <span style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{uploadingMj ? "上传中..." : "点击上传 MJ 生成的参考图"}</span>
-                </>
+      {/* Expanded Content */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            style={{ overflow: "hidden" }}
+          >
+            <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 16px 14px 46px", display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Scene Description */}
+              {shot.visualDescription && (
+                <div>
+                  <label style={{ fontSize: 10, color: C.muted, marginBottom: 4, display: "block", letterSpacing: "0.06em", textTransform: "uppercase" }}>场景描述</label>
+                  <p style={{ fontSize: 12, color: C.textSub, lineHeight: 1.7 }}>{shot.visualDescription}</p>
+                </div>
+              )}
+              {/* Dialogue */}
+              {shot.dialogue && (
+                <div>
+                  <label style={{ fontSize: 10, color: C.muted, marginBottom: 4, display: "block", letterSpacing: "0.06em", textTransform: "uppercase" }}>对白</label>
+                  <p style={{ fontSize: 12, color: "oklch(0.78 0.01 240)", lineHeight: 1.7, fontStyle: "italic" }}>"{shot.dialogue}"</p>
+                </div>
+              )}
+              {/* Emotion */}
+              {shot.emotion && (
+                <div>
+                  <label style={{ fontSize: 10, color: C.muted, marginBottom: 4, display: "block", letterSpacing: "0.06em", textTransform: "uppercase" }}>情绪/氛围</label>
+                  <p style={{ fontSize: 12, color: C.textSub }}>{shot.emotion}</p>
+                </div>
               )}
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleMjUpload(f); e.target.value = ""; }}
-            />
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
-          {/* STEP 3: 生成 NBP 参考图 */}
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, fontFamily: "'JetBrains Mono', monospace", display: "block", marginBottom: 8 }}>
-              STEP 3 · 生成参考图（Nano Banana Pro）
-            </span>
-            <div style={{ display: "grid", gridTemplateColumns: isCharacter ? "1fr 1fr 1fr 1fr" : "1fr", gap: 8 }}>
-              {/* 主图 */}
-              <AssetImageSlot
-                label={isCharacter ? "主图" : "参考图"}
-                url={asset.mainImageUrl}
-                isPortrait={isCharacter ? true : isPortrait}
-                generating={generatingMain}
-                disabled={!asset.mjImageUrl}
-                onGenerate={() => {
-                  setGeneratingMain(true);
-                  genImage.mutate({ assetId: asset.id, projectId: project.id, viewType: "main" });
+// ─── 主体 Tab ─────────────────────────────────────────────────────────────────
+function SubjectTab({ projectId, project }: { projectId: number; project: OverseasProject }) {
+  const [filter, setFilter] = useState<SubjectFilter>("all");
+  const [selectedAsset, setSelectedAsset] = useState<OverseasAsset | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addType, setAddType] = useState<"character" | "scene" | "prop">("character");
+
+  const { data: charAssets, refetch: refetchChar } = trpc.overseas.listAssets.useQuery({ projectId, type: "character" });
+  const { data: sceneAssets, refetch: refetchScene } = trpc.overseas.listAssets.useQuery({ projectId, type: "scene" });
+  const { data: propAssets, refetch: refetchProp } = trpc.overseas.listAssets.useQuery({ projectId, type: "prop" });
+
+  const allAssets = [
+    ...(charAssets ?? []).map(a => ({ ...a, _type: "character" as const })),
+    ...(sceneAssets ?? []).map(a => ({ ...a, _type: "scene" as const })),
+    ...(propAssets ?? []).map(a => ({ ...a, _type: "prop" as const })),
+  ] as (OverseasAsset & { _type: "character" | "scene" | "prop" })[];
+
+  const filtered = filter === "all" ? allAssets : allAssets.filter(a => a._type === filter);
+
+  const refetchAll = () => { refetchChar(); refetchScene(); refetchProp(); };
+
+  const FILTER_TABS = [
+    { key: "all" as SubjectFilter, label: "全部", icon: <Users size={13} /> },
+    { key: "character" as SubjectFilter, label: "角色", icon: <Users size={13} /> },
+    { key: "scene" as SubjectFilter, label: "场景", icon: <MapPin size={13} /> },
+    { key: "prop" as SubjectFilter, label: "道具", icon: <Package size={13} /> },
+  ];
+
+  return (
+    <div style={{ display: "flex", height: "calc(100vh - 52px)", overflow: "hidden" }}>
+      {/* Asset Grid */}
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Toolbar */}
+        <div style={{
+          padding: "10px 20px", borderBottom: `1px solid ${C.border}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: C.surface, flexShrink: 0,
+        }}>
+          {/* Filter Tabs */}
+          <div style={{ display: "flex", gap: 2, background: "oklch(0.10 0.005 240)", borderRadius: 8, padding: 3 }}>
+            {FILTER_TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setFilter(tab.key)}
+                style={{
+                  padding: "4px 14px", borderRadius: 6, cursor: "pointer", border: "none",
+                  fontSize: 12, display: "flex", alignItems: "center", gap: 4, transition: "all 0.15s",
+                  background: filter === tab.key ? C.green : "transparent",
+                  color: filter === tab.key ? "oklch(0.08 0.005 240)" : C.muted,
                 }}
-              />
-              {/* 人物三视图 */}
-              {isCharacter && (
-                <>
-                  <AssetImageSlot label="正视" url={asset.viewFrontUrl} isPortrait generating={generatingFront} disabled={!asset.mjImageUrl}
-                    onGenerate={() => { setGeneratingFront(true); genImage.mutate({ assetId: asset.id, projectId: project.id, viewType: "front" }); }} />
-                  <AssetImageSlot label="侧视" url={asset.viewSideUrl} isPortrait generating={generatingSide} disabled={!asset.mjImageUrl}
-                    onGenerate={() => { setGeneratingSide(true); genImage.mutate({ assetId: asset.id, projectId: project.id, viewType: "side" }); }} />
-                  <AssetImageSlot label="背视" url={asset.viewBackUrl} isPortrait generating={generatingBack} disabled={!asset.mjImageUrl}
-                    onGenerate={() => { setGeneratingBack(true); genImage.mutate({ assetId: asset.id, projectId: project.id, viewType: "back" }); }} />
-                </>
-              )}
-            </div>
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
           </div>
-
-          {/* 删除按钮 */}
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 6 }}>
             <Button
-              variant="outline"
-              onClick={onDelete}
-              style={{ borderColor: "oklch(0.45 0.15 25)", color: "oklch(0.65 0.15 25)", fontSize: 11, height: 26, gap: 4 }}
+              onClick={() => { setAddType("character"); setShowAddDialog(true); }}
+              style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, fontSize: 12, gap: 5, height: 32 }}
             >
-              <Trash2 size={11} /> 删除资产
+              <Plus size={13} /> 新建主体
             </Button>
           </div>
         </div>
+
+        {/* Grid */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+          {filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 0", border: `1px dashed ${C.border}`, borderRadius: 12 }}>
+              <Users size={40} style={{ color: C.mutedDim, margin: "0 auto 12px" }} />
+              <p style={{ color: C.muted, marginBottom: 6 }}>还没有主体资产</p>
+              <p style={{ fontSize: 12, color: "oklch(0.35 0.008 240)", marginBottom: 20 }}>
+                添加角色、场景、道具，上传 MJ 参考图后可生成一致性主体图
+              </p>
+              <Button onClick={() => setShowAddDialog(true)} style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, gap: 6 }}>
+                <Plus size={14} /> 新建主体
+              </Button>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+              {filtered.map(asset => (
+                <SubjectCard
+                  key={asset.id}
+                  asset={asset}
+                  selected={selectedAsset?.id === asset.id}
+                  onSelect={() => setSelectedAsset(selectedAsset?.id === asset.id ? null : asset)}
+                  onRefresh={refetchAll}
+                />
+              ))}
+              {/* Add New Card */}
+              <button
+                onClick={() => setShowAddDialog(true)}
+                style={{
+                  border: `2px dashed ${C.border}`, borderRadius: 10, aspectRatio: "9/12",
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+                  cursor: "pointer", background: "transparent", color: C.muted, transition: "all 0.2s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = C.green; (e.currentTarget as HTMLButtonElement).style.color = C.green; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = C.border; (e.currentTarget as HTMLButtonElement).style.color = C.muted; }}
+              >
+                <Plus size={20} />
+                <span style={{ fontSize: 12 }}>新建主体</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right Panel: Generate Subject Image */}
+      {selectedAsset && (
+        <SubjectGeneratePanel
+          asset={selectedAsset}
+          project={project}
+          onClose={() => setSelectedAsset(null)}
+          onRefresh={refetchAll}
+        />
+      )}
+
+      <AddSubjectDialog
+        open={showAddDialog}
+        defaultType={addType}
+        onClose={() => setShowAddDialog(false)}
+        onCreated={() => { setShowAddDialog(false); refetchAll(); }}
+        projectId={projectId}
+      />
+    </div>
+  );
+}
+
+function SubjectCard({ asset, selected, onSelect, onRefresh }: {
+  asset: OverseasAsset;
+  selected: boolean;
+  onSelect: () => void;
+  onRefresh: () => void;
+}) {
+  const thumbUrl = asset.mainImageUrl || asset.mjImageUrl;
+  const TYPE_LABELS: Record<string, string> = { character: "角色", scene: "场景", prop: "道具" };
+  const TYPE_COLORS: Record<string, string> = { character: C.green, scene: C.blue, prop: C.amber };
+
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        background: C.card, border: `2px solid ${selected ? C.green : C.border}`,
+        borderRadius: 10, overflow: "hidden", cursor: "pointer", transition: "all 0.15s",
+        aspectRatio: "9/12", display: "flex", flexDirection: "column",
+      }}
+    >
+      {/* Image */}
+      <div style={{ flex: 1, background: "oklch(0.12 0.005 240)", position: "relative", overflow: "hidden" }}>
+        {thumbUrl ? (
+          <img src={thumbUrl} alt={asset.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Users size={28} style={{ color: C.mutedDim }} />
+          </div>
+        )}
+        {/* Type Badge */}
+        <div style={{
+          position: "absolute", top: 6, left: 6,
+          fontSize: 9, padding: "2px 6px", borderRadius: 4,
+          background: `${TYPE_COLORS[asset.type]}20`,
+          color: TYPE_COLORS[asset.type],
+          border: `1px solid ${TYPE_COLORS[asset.type]}50`,
+        }}>
+          {TYPE_LABELS[asset.type]}
+        </div>
+        {/* Elements Badge */}
+        {asset.isGlobalRef && (
+          <div style={{
+            position: "absolute", top: 6, right: 6,
+            fontSize: 9, padding: "2px 6px", borderRadius: 4,
+            background: "oklch(0.75 0.17 65 / 0.2)", color: C.amber,
+            border: `1px solid oklch(0.75 0.17 65 / 0.5)`,
+          }}>
+            ⚡ Elements
+          </div>
+        )}
+        {/* Select Overlay */}
+        {selected && (
+          <div style={{
+            position: "absolute", inset: 0, background: `${C.green}20`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Check size={16} style={{ color: "oklch(0.08 0.005 240)" }} />
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Name */}
+      <div style={{ padding: "8px 10px", borderTop: `1px solid ${C.border}` }}>
+        <p style={{ fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</p>
+        <p style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+          {thumbUrl ? "已上传参考图" : "点击选择 → 生成主体图"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SubjectGeneratePanel({ asset, project, onClose, onRefresh }: {
+  asset: OverseasAsset;
+  project: OverseasProject;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const [prompt, setPrompt] = useState(asset.nbpPrompt ?? "");
+  const [generating, setGenerating] = useState(false);
+  const [uploadingMj, setUploadingMj] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isPortrait = project.aspectRatio === "portrait";
+
+  const generateAssetImage = trpc.overseas.generateAssetImage.useMutation({
+    onSuccess: () => { toast.success("主体图生成完成"); setGenerating(false); onRefresh(); },
+    onError: (e) => { toast.error(e.message); setGenerating(false); },
+  });
+
+  const updateAsset = trpc.overseas.updateAsset.useMutation({
+    onSuccess: () => { toast.success("图片上传成功"); setUploadingMj(false); onRefresh(); },
+    onError: (e: { message: string }) => { toast.error(e.message); setUploadingMj(false); },
+  });
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMj(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/upload-asset-image", { method: "POST", body: formData, credentials: "include" });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json() as { url: string };
+      updateAsset.mutate({ id: asset.id, mjImageUrl: url });
+    } catch (err: unknown) {
+      toast.error((err as Error).message ?? "上传失败");
+      setUploadingMj(false);
+    }
+  };
+
+  const thumbUrl = asset.mainImageUrl || asset.mjImageUrl;
+
+  return (
+    <div style={{
+      width: 320, background: C.surface, borderLeft: `1px solid ${C.border}`,
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>生成主体图</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>
+          <X size={16} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Asset Name */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 6, background: C.greenDim, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Users size={16} style={{ color: C.green }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{asset.name}</p>
+            <p style={{ fontSize: 11, color: C.muted }}>{asset.type === "character" ? "角色" : asset.type === "scene" ? "场景" : "道具"}</p>
+          </div>
+        </div>
+
+        {/* Current Image */}
+        <div>
+          <label style={{ fontSize: 11, color: C.muted, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>主体素材</label>
+          <div style={{
+            borderRadius: 8, overflow: "hidden", background: "oklch(0.12 0.005 240)",
+            aspectRatio: isPortrait ? "9/16" : "16/9",
+            border: `1px solid ${C.border}`,
+          }}>
+            {thumbUrl ? (
+              <img src={thumbUrl} alt={asset.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
+                <ImageIcon size={28} style={{ color: C.mutedDim }} />
+                <span style={{ fontSize: 11, color: C.muted }}>暂无图片</span>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                flex: 1, padding: "6px 0", borderRadius: 6, cursor: "pointer",
+                background: "transparent", border: `1px solid ${C.border}`, color: C.muted, fontSize: 11,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+              }}
+            >
+              {uploadingMj ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+              上传 MJ 图
+            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
+            {thumbUrl && (
+              <a href={thumbUrl} download target="_blank" rel="noreferrer">
+                <button style={{ padding: "6px 10px", borderRadius: 6, cursor: "pointer", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                  <Download size={12} /> 下载
+                </button>
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Prompt */}
+        <div>
+          <label style={{ fontSize: 11, color: C.muted, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            主体提示词 <span style={{ color: "oklch(0.35 0.008 240)" }}>（NBP / 即梦）</span>
+          </label>
+          <Textarea
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            placeholder={`描述${asset.name}的外观特征...\n\nPhotorealistic character design, cinematic lighting...`}
+            rows={6}
+            style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, resize: "none", fontSize: 12 }}
+          />
+          <p style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>{prompt.length}/8000</p>
+        </div>
+
+        {/* Generate Button */}
+        <Button
+          onClick={() => {
+            if (!prompt.trim()) { toast.error("请输入提示词"); return; }
+            setGenerating(true);
+            generateAssetImage.mutate({ assetId: asset.id, projectId: asset.projectId ?? 0, viewType: "main" });
+          }}
+          disabled={generating || !prompt.trim()}
+          style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, gap: 6 }}
+        >
+          {generating ? <><Loader2 className="animate-spin w-4 h-4" /> 生成中...</> : <><Sparkles size={14} /> 生成主体图</>}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AddSubjectDialog({ open, defaultType, onClose, onCreated, projectId }: {
+  open: boolean;
+  defaultType: "character" | "scene" | "prop";
+  onClose: () => void;
+  onCreated: () => void;
+  projectId: number;
+}) {
+  const [form, setForm] = useState({ name: "", type: defaultType, description: "" });
+  const createAsset = trpc.overseas.createAsset.useMutation({
+    onSuccess: () => { toast.success("主体已创建"); onCreated(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 420 }}>
+        <DialogHeader>
+          <DialogTitle style={{ color: C.text }}>新建主体</DialogTitle>
+        </DialogHeader>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "8px 0" }}>
+          <div>
+            <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>主体类型</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              {[
+                { key: "character", label: "角色", icon: <Users size={13} /> },
+                { key: "scene", label: "场景", icon: <MapPin size={13} /> },
+                { key: "prop", label: "道具", icon: <Package size={13} /> },
+              ].map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setForm(f => ({ ...f, type: t.key as "character" | "scene" | "prop" }))}
+                  style={{
+                    flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer",
+                    border: `2px solid ${form.type === t.key ? C.green : C.border}`,
+                    background: form.type === t.key ? C.greenDim : "transparent",
+                    color: form.type === t.key ? C.green : C.muted,
+                    fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                  }}
+                >
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>名称</label>
+            <Input
+              placeholder={form.type === "character" ? "例：LUCAS" : form.type === "scene" ? "例：废弃营地_中心" : "例：战术匕首"}
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: C.muted, marginBottom: 6, display: "block" }}>描述（可选）</label>
+            <Textarea
+              placeholder="简要描述外观特征..."
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              rows={3}
+              style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, resize: "none" }}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} style={{ borderColor: C.border, color: C.muted }}>取消</Button>
+          <Button
+            onClick={() => createAsset.mutate({ projectId, type: form.type, name: form.name, description: form.description || undefined })}
+            disabled={!form.name.trim() || createAsset.isPending}
+            style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700 }}
+          >
+            {createAsset.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : "创建"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── 故事版 Tab ───────────────────────────────────────────────────────────────
+function StoryboardTab({ projectId, project, activeEpisode, onEpisodeChange }: {
+  projectId: number;
+  project: OverseasProject;
+  activeEpisode: number;
+  onEpisodeChange: (ep: number) => void;
+}) {
+  const [activeShotId, setActiveShotId] = useState<number | null>(null);
+  const [activePanel, setActivePanel] = useState<StoryboardPanel>("image");
+
+  const { data: shotsData, refetch } = trpc.overseas.listShots.useQuery({ projectId, episodeNumber: activeEpisode });
+  const shots = (shotsData ?? []) as ScriptShot[];
+
+  const activeShot = shots.find(s => s.id === activeShotId) ?? shots[0] ?? null;
+
+  // Auto-select first shot when episode changes
+  const prevEpisode = useRef(activeEpisode);
+  if (prevEpisode.current !== activeEpisode) {
+    prevEpisode.current = activeEpisode;
+    setActiveShotId(null);
+  }
+
+  const displayShot = activeShotId ? shots.find(s => s.id === activeShotId) ?? null : shots[0] ?? null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 52px)", overflow: "hidden" }}>
+      {/* Top Bar */}
+      <div style={{
+        padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        background: C.surface, flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 13, color: C.muted }}>第</span>
+          <Select value={String(activeEpisode)} onValueChange={v => onEpisodeChange(Number(v))}>
+            <SelectTrigger style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, width: 80, height: 30, fontSize: 13 }}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+              {Array.from({ length: project.totalEpisodes ?? 20 }, (_, i) => i + 1).map(ep => (
+                <SelectItem key={ep} value={String(ep)} style={{ color: C.text }}>第 {ep} 集</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span style={{ fontSize: 13, color: C.muted }}>共 {shots.length} 个镜头</span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={{ display: "flex", alignItems: "center", gap: 4, color: C.muted, cursor: "pointer", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, padding: "4px 10px" }}>
+            <Zap size={12} /> 批量生成
+          </button>
+        </div>
+      </div>
+
+      {/* Main Area */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Center: Large Preview */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: C.bg, position: "relative" }}>
+          {shots.length === 0 ? (
+            <div style={{ textAlign: "center" }}>
+              <Film size={48} style={{ color: C.mutedDim, marginBottom: 12 }} />
+              <p style={{ color: C.muted, marginBottom: 6 }}>第 {activeEpisode} 集还没有分镜</p>
+              <p style={{ fontSize: 12, color: "oklch(0.35 0.008 240)" }}>请先在「剧本」Tab 导入并拆解剧本</p>
+            </div>
+          ) : displayShot ? (
+            <ShotPreview shot={displayShot} project={project} onRefresh={refetch} />
+          ) : null}
+        </div>
+
+        {/* Right Panel */}
+        {displayShot && (
+          <StoryboardRightPanel
+            shot={displayShot}
+            project={project}
+            activePanel={activePanel}
+            onPanelChange={setActivePanel}
+            projectId={projectId}
+            onRefresh={refetch}
+          />
+        )}
+      </div>
+
+      {/* Bottom: Shot Strip */}
+      {shots.length > 0 && (
+        <ShotStrip
+          shots={shots}
+          activeShotId={displayShot?.id ?? null}
+          onSelect={(id) => setActiveShotId(id)}
+          project={project}
+        />
       )}
     </div>
   );
 }
 
-// ─── 资产图片槽 ────────────────────────────────────────────────────────────────
+function ShotPreview({ shot, project, onRefresh }: { shot: ScriptShot; project: OverseasProject; onRefresh: () => void }) {
+  const isPortrait = project.aspectRatio === "portrait";
+  const hasVideo = !!shot.videoUrl;
+  const hasImage = !!shot.firstFrameUrl;
 
-function AssetImageSlot({ label, url, isPortrait, generating, disabled, onGenerate }: {
-  label: string;
-  url: string | null | undefined;
-  isPortrait: boolean;
-  generating: boolean;
-  disabled: boolean;
-  onGenerate: () => void;
-}) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 10, color: C.muted, textAlign: "center" }}>{label}</span>
-      {url ? (
-        <div style={{ position: "relative", borderRadius: 6, overflow: "hidden", aspectRatio: isPortrait ? "9/16" : "16/9" }}>
-          <img src={url} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          <a
-            href={url}
-            download
-            onClick={e => e.stopPropagation()}
-            style={{ position: "absolute", top: 4, right: 4, background: "oklch(0 0 0 / 0.6)", borderRadius: 4, padding: "2px 4px", display: "flex" }}
-          >
-            <Download size={10} style={{ color: "white" }} />
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, maxHeight: "100%" }}>
+      {/* Image/Video Preview */}
+      <div style={{
+        borderRadius: 10, overflow: "hidden", background: "oklch(0.12 0.005 240)",
+        border: `1px solid ${C.border}`,
+        ...(isPortrait
+          ? { height: "min(480px, calc(100vh - 280px))", aspectRatio: "9/16" }
+          : { width: "min(720px, calc(100vw - 400px))", aspectRatio: "16/9" }
+        ),
+        position: "relative",
+      }}>
+        {hasVideo ? (
+          <video
+            src={shot.videoUrl!}
+            controls
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : hasImage ? (
+          <img src={shot.firstFrameUrl!} alt={`镜头 ${shot.shotNumber}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
+            <ImageIcon size={36} style={{ color: C.mutedDim }} />
+            <span style={{ fontSize: 12, color: C.muted }}>暂无首帧图片</span>
+          </div>
+        )}
+        {/* Shot Number Badge */}
+        <div style={{
+          position: "absolute", top: 10, left: 10,
+          background: "oklch(0.08 0.005 240 / 0.85)", borderRadius: 6,
+          padding: "3px 8px", fontSize: 11, color: C.green,
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          镜头 {shot.episodeNumber}.{shot.shotNumber}
+        </div>
+      </div>
+
+      {/* Action Bar */}
+      <div style={{ display: "flex", gap: 12, fontSize: 12, color: C.muted }}>
+        {hasImage && (
+          <>
+            <button style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", background: "none", border: "none", color: C.muted }}>
+              <RefreshCw size={12} /> 重绘
+            </button>
+            <button style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", background: "none", border: "none", color: C.muted }}>
+              <Copy size={12} /> 对口型
+            </button>
+          </>
+        )}
+        {(hasImage || hasVideo) && (
+          <a href={hasVideo ? shot.videoUrl! : shot.firstFrameUrl!} download target="_blank" rel="noreferrer">
+            <button style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", background: "none", border: "none", color: C.muted }}>
+              <Download size={12} /> 下载
+            </button>
           </a>
-          <Button
-            variant="outline"
-            onClick={onGenerate}
-            disabled={generating || disabled}
-            style={{ position: "absolute", bottom: 4, right: 4, borderColor: C.border, color: C.muted, fontSize: 9, height: 20, gap: 2, padding: "0 6px" }}
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StoryboardRightPanel({ shot, project, activePanel, onPanelChange, projectId, onRefresh }: {
+  shot: ScriptShot;
+  project: OverseasProject;
+  activePanel: StoryboardPanel;
+  onPanelChange: (p: StoryboardPanel) => void;
+  projectId: number;
+  onRefresh: () => void;
+}) {
+  const [imagePrompt, setImagePrompt] = useState(shot.firstFramePrompt ?? "");
+  const [generatingImage, setGeneratingImage] = useState(false);
+
+  const { data: charAssets } = trpc.overseas.listAssets.useQuery({ projectId, type: "character" });
+  const { data: sceneAssets } = trpc.overseas.listAssets.useQuery({ projectId, type: "scene" });
+  const allAssets = [...(charAssets ?? []), ...(sceneAssets ?? [])] as OverseasAsset[];
+  const globalRefs = allAssets.filter(a => a.isGlobalRef);
+
+  const generateFrame = trpc.overseas.generateFrame.useMutation({
+    onSuccess: () => { toast.success("首帧生成完成"); setGeneratingImage(false); onRefresh(); },
+    onError: (e) => { toast.error(e.message); setGeneratingImage(false); },
+  });
+
+  const generateVideoPrompt = trpc.overseas.generateVideoPrompt.useMutation({
+    onSuccess: () => { toast.success("视频提示词已生成"); onRefresh(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <div style={{
+      width: 340, background: C.surface, borderLeft: `1px solid ${C.border}`,
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
+      {/* Panel Tabs */}
+      <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        {[
+          { key: "image" as StoryboardPanel, label: "绘图", icon: <ImageIcon size={13} /> },
+          { key: "video" as StoryboardPanel, label: "视频", icon: <Video size={13} /> },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => onPanelChange(tab.key)}
+            style={{
+              flex: 1, padding: "10px 0", cursor: "pointer", border: "none",
+              fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              background: activePanel === tab.key ? C.bg : "transparent",
+              color: activePanel === tab.key ? C.text : C.muted,
+              borderBottom: activePanel === tab.key ? `2px solid ${C.green}` : "2px solid transparent",
+              fontWeight: activePanel === tab.key ? 600 : 400,
+              transition: "all 0.15s",
+            }}
           >
-            {generating ? <Loader2 className="animate-spin w-2 h-2" /> : <RefreshCw size={9} />}
-          </Button>
-        </div>
-      ) : (
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+        {activePanel === "image" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Shot Info */}
+            <div>
+              <label style={{ fontSize: 10, color: C.muted, marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                镜头 {shot.episodeNumber}.{shot.shotNumber}
+              </label>
+              <p style={{ fontSize: 12, color: C.textSub, lineHeight: 1.6 }}>
+                {shot.visualDescription ?? "无描述"}
+              </p>
+            </div>
+
+            {/* Image Prompt */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <label style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>首帧提示词</label>
+                {shot.firstFramePrompt && (
+                  <button
+                    onClick={() => navigator.clipboard.writeText(shot.firstFramePrompt!).then(() => toast.success("已复制"))}
+                    style={{ fontSize: 10, color: C.muted, cursor: "pointer", background: "none", border: "none", display: "flex", alignItems: "center", gap: 2 }}
+                  >
+                    <Copy size={10} /> 复制
+                  </button>
+                )}
+              </div>
+              <Textarea
+                value={imagePrompt}
+                onChange={e => setImagePrompt(e.target.value)}
+                placeholder="首帧图片生成提示词..."
+                rows={5}
+                style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, resize: "none", fontSize: 12 }}
+              />
+              <p style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>{imagePrompt.length}/8000</p>
+            </div>
+
+            {/* Reference Assets */}
+            {allAssets.length > 0 && (
+              <div>
+                <label style={{ fontSize: 10, color: C.muted, marginBottom: 8, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  参考主体 {globalRefs.length > 0 && <span style={{ color: C.amber }}>（{globalRefs.length} 个 Elements 参考）</span>}
+                </label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {allAssets.slice(0, 6).map(asset => {
+                    const thumb = asset.mainImageUrl || asset.mjImageUrl;
+                    return (
+                      <div key={asset.id} style={{ position: "relative" }}>
+                        <div style={{
+                          width: 48, height: 48, borderRadius: 6, overflow: "hidden",
+                          border: `2px solid ${asset.isGlobalRef ? C.amber : C.border}`,
+                          background: "oklch(0.12 0.005 240)",
+                        }}>
+                          {thumb ? (
+                            <img src={thumb} alt={asset.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <Users size={16} style={{ color: C.mutedDim }} />
+                            </div>
+                          )}
+                        </div>
+                        <p style={{ fontSize: 9, color: C.muted, textAlign: "center", marginTop: 2, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Generate Button */}
+            <Button
+              onClick={() => {
+                if (!imagePrompt.trim()) { toast.error("请输入首帧提示词"); return; }
+                setGeneratingImage(true);
+                const refUrls = globalRefs.map(a => a.mainImageUrl || a.mjImageUrl).filter(Boolean) as string[];
+                generateFrame.mutate({
+                  shotId: shot.id,
+                  frameType: "first",
+                  referenceImageUrls: refUrls.length > 0 ? refUrls : undefined,
+                });
+              }}
+              disabled={generatingImage || !imagePrompt.trim()}
+              style={{ background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, gap: 6 }}
+            >
+              {generatingImage ? <><Loader2 className="animate-spin w-4 h-4" /> 生成中...</> : <><Sparkles size={14} /> 生成首帧</>}
+            </Button>
+
+            {/* Add Main Image */}
+            <button
+              style={{
+                padding: "8px 0", borderRadius: 8, cursor: "pointer",
+                background: "transparent", border: `1px solid ${C.border}`, color: C.muted, fontSize: 12,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              }}
+              onClick={() => toast.info("功能开发中：上传主体图到此镜头")}
+            >
+              <Plus size={13} /> 主体
+            </button>
+          </div>
+        ) : (
+          /* Video Panel */
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Video Prompt */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <label style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>视频提示词</label>
+                {!shot.videoPrompt && (
+                  <button
+                    onClick={() => generateVideoPrompt.mutate({ shotId: shot.id })}
+                    style={{ fontSize: 10, color: C.green, cursor: "pointer", background: "none", border: "none", display: "flex", alignItems: "center", gap: 2 }}
+                  >
+                    <Wand2 size={10} /> AI 生成
+                  </button>
+                )}
+              </div>
+              <Textarea
+                value={shot.videoPrompt ?? ""}
+                readOnly
+                placeholder="点击「AI 生成」自动生成视频提示词..."
+                rows={6}
+                style={{ background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, color: C.text, resize: "none", fontSize: 12 }}
+              />
+            </div>
+
+            {/* Video Status */}
+            {shot.videoUrl ? (
+              <div style={{ padding: "10px 12px", background: `${C.green}15`, border: `1px solid ${C.greenBorder}`, borderRadius: 8 }}>
+                <p style={{ fontSize: 12, color: C.green, marginBottom: 6 }}>✓ 视频已生成</p>
+                <a href={shot.videoUrl} download target="_blank" rel="noreferrer">
+                  <Button variant="outline" style={{ fontSize: 12, borderColor: C.greenBorder, color: C.green, height: 30, gap: 4 }}>
+                    <Download size={12} /> 下载视频
+                  </Button>
+                </a>
+              </div>
+            ) : (
+              <div style={{ padding: "12px", background: "oklch(0.18 0.006 240)", border: `1px solid ${C.border}`, borderRadius: 8, textAlign: "center" }}>
+                <Video size={24} style={{ color: C.mutedDim, margin: "0 auto 8px" }} />
+                <p style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>Seedance 1.5 Pro</p>
+                <p style={{ fontSize: 11, color: "oklch(0.35 0.008 240)" }}>API 接入中，敬请期待</p>
+                <Button
+                  disabled
+                  style={{ marginTop: 10, background: C.green, color: "oklch(0.08 0.005 240)", fontWeight: 700, fontSize: 12, gap: 5, opacity: 0.5 }}
+                >
+                  <Video size={13} /> 生成视频（即将上线）
+                </Button>
+              </div>
+            )}
+
+            {/* Video Ref Assets */}
+            {allAssets.filter(a => a.isGlobalRef).length > 0 && (
+              <div>
+                <label style={{ fontSize: 10, color: C.muted, marginBottom: 8, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  视频分镜素材
+                </label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {allAssets.filter(a => a.isGlobalRef).map(asset => {
+                    const thumb = asset.mainImageUrl || asset.mjImageUrl;
+                    return (
+                      <div key={asset.id} style={{
+                        width: 64, borderRadius: 6, overflow: "hidden",
+                        border: `2px solid ${C.greenBorder}`, background: "oklch(0.12 0.005 240)",
+                      }}>
+                        <div style={{ aspectRatio: "9/16" }}>
+                          {thumb ? (
+                            <img src={thumb} alt={asset.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <Users size={16} style={{ color: C.mutedDim }} />
+                            </div>
+                          )}
+                        </div>
+                        <p style={{ fontSize: 9, color: C.green, textAlign: "center", padding: "3px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── 底部镜头条 ───────────────────────────────────────────────────────────────
+function ShotStrip({ shots, activeShotId, onSelect, project }: {
+  shots: ScriptShot[];
+  activeShotId: number | null;
+  onSelect: (id: number) => void;
+  project: OverseasProject;
+}) {
+  const isPortrait = project.aspectRatio === "portrait";
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  const scroll = (dir: "left" | "right") => {
+    if (!stripRef.current) return;
+    stripRef.current.scrollBy({ left: dir === "left" ? -300 : 300, behavior: "smooth" });
+  };
+
+  return (
+    <div style={{
+      height: 120, background: C.surface, borderTop: `1px solid ${C.border}`,
+      display: "flex", alignItems: "center", flexShrink: 0, position: "relative",
+    }}>
+      {/* Scroll Left */}
+      <button
+        onClick={() => scroll("left")}
+        style={{ position: "absolute", left: 6, zIndex: 2, width: 28, height: 28, borderRadius: "50%", background: "oklch(0.20 0.006 240)", border: `1px solid ${C.border}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}
+      >
+        <ChevronLeft size={14} />
+      </button>
+
+      {/* Strip */}
+      <div
+        ref={stripRef}
+        style={{
+          display: "flex", gap: 8, overflowX: "auto", padding: "8px 40px",
+          scrollbarWidth: "none", flex: 1,
+        }}
+      >
+        {shots.map((shot, idx) => {
+          const isActive = shot.id === activeShotId || (!activeShotId && idx === 0);
+          const thumb = shot.firstFrameUrl;
+          const hasVideo = !!shot.videoUrl;
+
+          return (
+            <div
+              key={shot.id}
+              onClick={() => onSelect(shot.id)}
+              style={{
+                flexShrink: 0, width: isPortrait ? 56 : 96, height: 96,
+                borderRadius: 8, overflow: "hidden", cursor: "pointer",
+                border: `2px solid ${isActive ? C.green : C.border}`,
+                background: "oklch(0.12 0.005 240)", position: "relative",
+                transition: "border-color 0.15s",
+              }}
+            >
+              {thumb ? (
+                <img src={thumb} alt={`镜头 ${shot.shotNumber}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <ImageIcon size={16} style={{ color: C.mutedDim }} />
+                </div>
+              )}
+              {/* Shot Number */}
+              <div style={{
+                position: "absolute", bottom: 0, left: 0, right: 0,
+                background: "oklch(0.08 0.005 240 / 0.85)", padding: "2px 4px",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}>
+                <span style={{ fontSize: 9, color: isActive ? C.green : C.muted, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {shot.episodeNumber}.{shot.shotNumber}
+                </span>
+                {hasVideo && <Play size={8} style={{ color: C.green }} />}
+              </div>
+              {/* Status dot */}
+              {shot.status === "generating_frame" || shot.status === "generating_video" ? (
+                <div style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: "50%", background: C.amber }} />
+              ) : shot.status === "done" ? (
+                <div style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: "50%", background: C.green }} />
+              ) : null}
+            </div>
+          );
+        })}
+
+        {/* Add Shot */}
         <div
-          onClick={disabled ? undefined : onGenerate}
           style={{
-            aspectRatio: isPortrait ? "9/16" : "16/9",
-            background: "oklch(0.18 0.006 240)", border: `1px dashed ${C.border}`, borderRadius: 6,
+            flexShrink: 0, width: isPortrait ? 56 : 96, height: 96,
+            borderRadius: 8, border: `2px dashed ${C.border}`, cursor: "pointer",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-            cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
+            color: C.muted, background: "transparent", transition: "all 0.15s",
           }}
+          onClick={() => toast.info("功能开发中：手动添加镜头")}
         >
-          {generating ? (
-            <Loader2 className="animate-spin w-4 h-4" style={{ color: C.amber }} />
-          ) : (
-            <>
-              <ImageIcon size={16} style={{ color: C.muted }} />
-              <span style={{ fontSize: 9, color: C.muted }}>{disabled ? "需先上传MJ图" : "点击生成"}</span>
-            </>
-          )}
+          <Plus size={16} />
+          <span style={{ fontSize: 9 }}>添加</span>
         </div>
-      )}
+      </div>
+
+      {/* Scroll Right */}
+      <button
+        onClick={() => scroll("right")}
+        style={{ position: "absolute", right: 6, zIndex: 2, width: 28, height: 28, borderRadius: "50%", background: "oklch(0.20 0.006 240)", border: `1px solid ${C.border}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}
+      >
+        <ChevronRight size={14} />
+      </button>
     </div>
   );
 }
